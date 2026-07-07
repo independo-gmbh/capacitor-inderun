@@ -1,0 +1,21 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "inderun-capacitor"
+
+// The IndeRun Android SDK modules are consumed as released Maven Central
+// artifacts (app.independo.inderun:inderun-*); see build.gradle.kts. No
+// composite/local module includes — this is a standalone Gradle build.
