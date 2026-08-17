@@ -10,7 +10,7 @@ let package = Package(
     name: "IndeRunCapacitor",
     platforms: [
         .iOS(.v15),
-        .macOS(.v12)
+        .macOS(.v14)
     ],
     products: [
         .library(
@@ -20,7 +20,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
-        .package(url: "https://github.com/independo-gmbh/inderun.git", from: "0.1.2")
+        .package(url: "https://github.com/independo-gmbh/inderun.git", from: "0.2.2")
     ],
     targets: [
         .target(

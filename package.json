@@ -1,15 +1,15 @@
 {
   "name": "@independo/capacitor-inderun",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "description": "Thin Capacitor bridge for IndeRun across web, iOS, and Android.",
   "license": "MIT",
-  "homepage": "https://github.com/independo-gmbh/inderun-capacitor#readme",
+  "homepage": "https://github.com/independo-gmbh/capacitor-inderun#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/independo-gmbh/inderun-capacitor.git"
+    "url": "git+https://github.com/independo-gmbh/capacitor-inderun.git"
   },
   "bugs": {
-    "url": "https://github.com/independo-gmbh/inderun-capacitor/issues"
+    "url": "https://github.com/independo-gmbh/capacitor-inderun/issues"
   },
   "keywords": [
     "capacitor",
@@ -58,8 +58,8 @@
   },
   "dependencies": {
     "@capacitor/core": "^8.0.0",
-    "@independo/inderun-contracts": "^0.1.2",
-    "@independo/inderun-web": "^0.1.2"
+    "@independo/inderun-contracts": "^0.2.2",
+    "@independo/inderun-web": "^0.2.2"
   },
   "devDependencies": {
     "@saithodev/semantic-release-backmerge": "^4.0.1",

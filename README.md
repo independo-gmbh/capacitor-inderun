@@ -1,5 +1,19 @@
 # `@independo/capacitor-inderun`
 
+<p align="center">
+  <a href="https://github.com/independo-gmbh/capacitor-inderun/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/independo-gmbh/capacitor-inderun/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/maintenance/yes/2026" alt="Maintenance Badge: until 2026" />
+  <a href="https://www.npmjs.com/package/@independo/capacitor-inderun"><img src="https://img.shields.io/npm/l/@independo/capacitor-inderun" alt="License Badge: MIT" /></a>
+<br>
+  <a href="https://www.npmjs.com/package/@independo/capacitor-inderun"><img src="https://img.shields.io/npm/dw/@independo/capacitor-inderun" alt="" role="presentation" /></a>
+  <a href="https://www.npmjs.com/package/@independo/capacitor-inderun"><img src="https://img.shields.io/npm/v/@independo/capacitor-inderun" alt="" role="presentation" /></a>
+</p>
+
+<p align="center">Built and maintained by <a href="https://www.independo.app/">Independo</a>.</p>
+
 Thin Capacitor bridge for IndeRun Mode 1 `run()` execution.
 
 The package delegates to the released [IndeRun](https://github.com/independo-gmbh/inderun)
@@ -88,3 +102,14 @@ try {
   }
 }
 ```
+
+## License
+
+MIT. See [`LICENSE`](./LICENSE).
+
+## Sponsorship & Development
+
+This project is sponsored by [netidee](https://www.netidee.at/inderun) and developed
+by [Independo GmbH](https://www.independo.app).
+
+Explore more [open-source tools and research from Independo](https://www.independo.app/open-source).
