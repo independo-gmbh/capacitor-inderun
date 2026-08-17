@@ -46,7 +46,7 @@
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:`) — this repo
-  runs `semantic-release` (see `release.config.js`) off commit messages.
+  runs `semantic-release` (see `release.config.cjs`) off commit messages.
 - PRs should note affected platforms (web/android/ios), test evidence, and any corresponding change
   needed in the `inderun` monorepo (e.g. a new provider option added upstream that this bridge needs
   to expose).

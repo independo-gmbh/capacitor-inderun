@@ -20,3 +20,4 @@ build/
 # OS / editor
 .DS_Store
 *.log
+.idea/
