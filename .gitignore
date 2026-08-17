@@ -1,0 +1,23 @@
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Swift / SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/local.properties
+android/.gradle-home/
+android/captures/
+.gradle/
+build/
+
+# OS / editor
+.DS_Store
+*.log
+.idea/

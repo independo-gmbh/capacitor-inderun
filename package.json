@@ -1,0 +1,77 @@
+{
+  "name": "@independo/capacitor-inderun",
+  "version": "0.2.2",
+  "description": "Thin Capacitor bridge for IndeRun across web, iOS, and Android.",
+  "license": "MIT",
+  "homepage": "https://github.com/independo-gmbh/capacitor-inderun#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/independo-gmbh/capacitor-inderun.git"
+  },
+  "bugs": {
+    "url": "https://github.com/independo-gmbh/capacitor-inderun/issues"
+  },
+  "keywords": [
+    "capacitor",
+    "plugin",
+    "inderun",
+    "ai"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "android",
+    "ios",
+    "Package.swift",
+    "README.md"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "pnpm run build",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:web": "vitest run",
+    "test:android": "cd android && ./gradlew :testDebugUnitTest",
+    "test:ios": "swift test",
+    "verify:web": "tsc -p tsconfig.json",
+    "verify:android": "cd android && ./gradlew assembleDebug",
+    "verify:ios": "swift build"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.0.0",
+    "@independo/inderun-contracts": "^0.2.2",
+    "@independo/inderun-web": "^0.2.2"
+  },
+  "devDependencies": {
+    "@saithodev/semantic-release-backmerge": "^4.0.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@types/node": "^24.13.2",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
+    "semantic-release": "^25.0.5",
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.6"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.0.0"
+  }
+}

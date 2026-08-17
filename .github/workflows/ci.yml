@@ -1,0 +1,66 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - '**'
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    name: "Web (lint / build / test)"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
+      - run: pnpm run build
+      - run: pnpm run test
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: "Android (unit tests / assemble)"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: zulu
+          cache: gradle
+      - uses: android-actions/setup-android@v4
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew :testDebugUnitTest
+      - name: Assemble Android library
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    name: "iOS (build / test)"
+    steps:
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app
+      - uses: actions/checkout@v7
+      - name: Build Swift package
+        run: swift build
+      - name: Run iOS unit tests
+        run: swift test

@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+minimumReleaseAgeExclude:
+  - '@independo/inderun-contracts@0.1.2 || 0.2.0 || 0.2.2'
+  - '@independo/inderun-route-core-wasm@0.1.2 || 0.2.0 || 0.2.2'
+  - '@independo/inderun-web@0.1.2 || 0.2.0 || 0.2.2'
