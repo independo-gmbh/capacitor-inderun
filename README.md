@@ -14,7 +14,7 @@
 
 <p align="center">Built and maintained by <a href="https://www.independo.app/">Independo</a>.</p>
 
-Thin Capacitor bridge for IndeRun Mode 1 `run()` execution.
+Thin Capacitor bridge for IndeRun Mode 1 `run()` and Mode 2 `stream()` execution.
 
 The package delegates to the released [IndeRun](https://github.com/independo-gmbh/inderun)
 platform SDKs instead of re-implementing routing, provider logic, or normalized error handling:
@@ -63,15 +63,68 @@ const result = await inderun.run({
 });
 ```
 
+## Streaming (Mode 2)
+
+`stream()` returns the same `StreamRun` shape the platform SDKs return directly: the
+run's handle, its canonical event sequence, and a cancel hook.
+
+```ts
+const run = await inderun.stream({
+  schemaVersion: "1.0",
+  task: { kind: "text_to_text" },
+  prompt: "Explain routing in two sentences."
+});
+
+console.log(run.handle.runId); // available before the first event
+
+let text = "";
+for await (const event of run.events) {
+  switch (event.type) {
+    case "content_delta":
+      text += event.payload.text;       // append
+      break;
+    case "content_snapshot":
+      text = event.payload.text ?? "";  // replace — an empty one retracts
+      break;
+    case "terminal":
+      // exactly one of "completed" | "error" | "cancelled"
+      console.log(event.payload.outcome);
+      break;
+  }
+}
+
+run.cancel("user navigated away"); // idempotent; a no-op after the terminal
+```
+
+Three things worth knowing before you build on it:
+
+- **Order by `sequence`, not arrival.** The bridge hop is not order-preserving, which is
+  why `sequence` is the contract's ordering authority. `events` already yields strictly by
+  it; if you attach your own listener instead, you must order them yourself.
+- **A failed run is not a rejected promise.** See [Error Handling](#error-handling).
+- **Handle `content_snapshot` even from a token-streaming provider.** A snapshot replaces
+  the cumulative text rather than appending to it, and an empty one is how a provider
+  retracts content it already delivered — for example when an on-device safety check
+  rejects a half-generated response.
+
 ## API
 
-- `createIndeRunCapacitor(options)` — returns a handle that lazily `configure()`s on the first `run()` and memoizes it. Safe to call once at app startup.
-- The low-level plugin methods `configure(options)` and `run(request)` are also exported.
+- `createIndeRunCapacitor(options)` — returns a handle that lazily `configure()`s on the first `run()` or `stream()` and memoizes it. Safe to call once at app startup.
+- `run(request)` — Mode 1. Resolves with the canonical IndeRun `TaskResult`.
+- `stream(request)` — Mode 2. Resolves with a `StreamRun` (`handle`, `events`, `cancel`). `events` is single-use.
+- The low-level plugin methods `configure(options)`, `startStream(options)` and `cancelStream(options)` are also exported, along with the listener event names `STREAM_EVENT_NAME` (`"indeRunStreamEvent"`) and `STREAM_ERROR_NAME` (`"indeRunStreamError"`).
+
+> The two listener event names are **public contract**. Native emits exactly these, and an
+> app may attach its own listener to them; renaming one is a breaking change.
 
 The `IndeRunCapacitorPlugin`, `ConfigureOptions`, and `OpenAIProviderBootstrapOptions`
 contracts — including the `openAI` bootstrap config and the web-only
 `allowDirectOpenAIEndpoint` flag — are defined and documented in
-`src/definitions.ts`. `run()` returns the canonical IndeRun `TaskResult`.
+`src/definitions.ts`.
+
+Note one asymmetry in the low-level surface: `run(request)` passes the request at the
+options root, while `startStream({ streamId, request })` nests it, because that envelope
+also carries the bridge-local correlation id. `stream()` hides this.
 
 ## Platform Notes
 
@@ -82,11 +135,32 @@ contracts — including the `openAI` bootstrap config and the web-only
 
 ## Current Limitations
 
-- Mode 1 `run()` only.
+- Mode 1 `run()` and Mode 2 `stream()` are supported. Mode 3 sessions are not.
+- **No backpressure across the bridge.** Native pushes events; a slow consumer buys memory,
+  not throttling, because events buffer in JS until they are read. Runs are finite and
+  terminal-bounded, and any drop or throttle policy would be behaviour — which belongs in
+  the engines, not in a bridge.
+- Which providers can actually stream is decided upstream, not here; see the
+  [provider matrix](https://github.com/independo-gmbh/inderun/blob/main/docs/architecture/providers.md#provider-matrix).
+- An unrecognized `StreamEvent.type` is passed through untouched rather than rejected, so a
+  consumer built against an older contract revision keeps working when a newer one adds an
+  event type. Ignore what you do not recognize.
 - No plugin-level credential management API is exposed in this first cut.
 - The bridge is intentionally thin; cloud provider bootstrap still has to come from the app.
 
 ## Error Handling
+
+A streaming run has **three** distinct failure surfaces, and conflating them is the easiest
+mistake to make:
+
+| Surface | When | How it reaches you |
+| --- | --- | --- |
+| Rejection | Request validation, or no streaming-capable provider | `stream()` rejects with an `IndeRunError` |
+| Terminal `error` event | A provider failed, or the whole planned chain did | **Not** a rejection — `for await` completes normally and the last event is `terminal` with `payload.outcome === "error"` |
+| Bridge fault | The transport lost or could not encode events | `events` throws an `Internal` `IndeRunError` |
+
+So a run that fails *after starting* ends your loop normally. Branch on
+`event.payload.outcome` to tell completion from failure from cancellation.
 
 Errors thrown by `configure()` and `run()` conform to `IndeRunError` from
 `@independo/inderun-contracts`; branch on `error.errorClass` (the shared error
