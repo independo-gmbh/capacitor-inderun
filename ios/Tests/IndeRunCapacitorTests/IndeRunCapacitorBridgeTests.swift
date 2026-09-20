@@ -11,7 +11,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         let json: [String: Any] = [
             "openAI": [
                 "model": "gpt-5.2",
-                "endpointURL": "/api/inderun/openai-responses",
+                "endpointUrl": "/api/inderun/openai-responses",
                 "auth": "none",
                 "authContextRef": "openai/main",
                 "timeoutMs": 30_000
@@ -26,6 +26,36 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         XCTAssertEqual(options.openAI?.authContextRef, "openai/main")
         XCTAssertEqual(options.openAI?.timeoutMs, 30_000)
         XCTAssertNil(options.allowDirectOpenAIEndpoint)
+    }
+
+    // Regression: the wire key is `endpointUrl` (what src/definitions.ts and
+    // IndeRunSerializer.kt both use). iOS previously decoded `endpointURL`, so a
+    // TypeScript-supplied endpoint was dropped and the provider silently fell back to
+    // the default OpenAI Responses endpoint.
+    func testDecodesEndpointUrlUsingTheTypeScriptWireKey() throws {
+        let json: [String: Any] = [
+            "openAI": [
+                "model": "gpt-5.2",
+                "endpointUrl": "https://proxy.example/api/openai-responses"
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
+
+        XCTAssertEqual(options.openAI?.endpointURL, "https://proxy.example/api/openai-responses")
+    }
+
+    func testIgnoresTheLegacySwiftCasedEndpointKey() throws {
+        let json: [String: Any] = [
+            "openAI": [
+                "model": "gpt-5.2",
+                "endpointURL": "https://proxy.example/api/openai-responses"
+            ]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
+
+        XCTAssertNil(options.openAI?.endpointURL)
     }
 
     func testDecodesConfigureOptionsWithAllOptionalFieldsAbsent() throws {

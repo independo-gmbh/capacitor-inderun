@@ -16,6 +16,19 @@ struct OpenAIProviderBootstrapOptions: Codable {
     let auth: String?
     let authContextRef: String?
     let timeoutMs: Int?
+
+    // The property keeps Swift's `URL` capitalisation to match OpenAIProviderOptions,
+    // but the wire key is whatever `ConfigureOptions` in src/definitions.ts sends --
+    // `endpointUrl`, which is also what IndeRunSerializer.kt reads on Android. Without
+    // this mapping the field silently decodes as nil and the provider falls back to the
+    // default endpoint.
+    enum CodingKeys: String, CodingKey {
+        case model
+        case endpointURL = "endpointUrl"
+        case auth
+        case authContextRef
+        case timeoutMs
+    }
 }
 
 struct CapacitorRunOptions: Codable {
