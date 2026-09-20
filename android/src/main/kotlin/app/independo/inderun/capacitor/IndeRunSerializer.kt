@@ -8,9 +8,17 @@ import app.independo.inderun.contracts.IndeRunErrorClass
 import app.independo.inderun.contracts.Message
 import app.independo.inderun.contracts.MessageRole
 import app.independo.inderun.contracts.OptimizeFor
+import app.independo.inderun.contracts.Outcome
 import app.independo.inderun.contracts.OutputType
+import app.independo.inderun.contracts.Payload
+import app.independo.inderun.contracts.PayloadError
+import app.independo.inderun.contracts.PayloadTelemetry
+import app.independo.inderun.contracts.PayloadUsage
+import app.independo.inderun.contracts.Phase
 import app.independo.inderun.contracts.PrivacyEnum
 import app.independo.inderun.contracts.SchemaVersion
+import app.independo.inderun.contracts.StreamEvent
+import app.independo.inderun.contracts.StreamRunHandle
 import app.independo.inderun.contracts.TaskKind
 import app.independo.inderun.contracts.TaskRequest
 import app.independo.inderun.contracts.TaskRequestConstraints
@@ -20,7 +28,6 @@ import app.independo.inderun.contracts.TaskRequestTelemetry
 import app.independo.inderun.contracts.TaskResult
 import app.independo.inderun.contracts.TaskResultTelemetry
 import app.independo.inderun.contracts.TelemetryLevel
-import app.independo.inderun.contracts.Usage
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import org.json.JSONArray
@@ -104,6 +111,104 @@ object IndeRunSerializer {
             error.runId?.let { put("runId", it) }
             error.details?.let { put("details", JSONObject(it)) }
         }
+    }
+
+    fun encodeStreamRunHandle(handle: StreamRunHandle): JSObject {
+        return JSObject().apply {
+            put("schemaVersion", handle.schemaVersion.rawValue)
+            put("runId", handle.runId)
+            put("startedAt", handle.startedAt)
+            handle.providerId?.let { put("providerId", it) }
+        }
+    }
+
+    /**
+     * Note what is deliberately *not* here: a `when` over [StreamEvent.type].
+     *
+     * The inbound parsers in this file throw on an unrecognized enum value, and that is
+     * right for them — those are closed contract enums on a request, where an unknown
+     * value really is an invalid request. `type` is the opposite: stream-event.schema.json
+     * closes its union with an explicit catch-all branch, and contracts/README.md requires
+     * SDKs to treat an unrecognized type as ignore-or-pass-through rather than an error, so
+     * that an additive minor revision does not break older consumers. Copying the
+     * throw-on-unknown pattern here would turn the one mechanism protecting forward
+     * compatibility into a guaranteed hard failure at the bridge hop. The type crosses as
+     * the string it is.
+     */
+    fun encodeStreamEvent(event: StreamEvent): JSObject {
+        return JSObject().apply {
+            put("schemaVersion", event.schemaVersion.rawValue)
+            put("runId", event.runId)
+            put("sequence", event.sequence)
+            put("timestamp", event.timestamp)
+            put("type", event.type)
+            event.payload?.let { put("payload", encodeStreamPayload(it)) }
+        }
+    }
+
+    /**
+     * quicktype flattens the event union, so [Payload] carries every branch's fields as
+     * optionals. Emitting only the non-null ones is what reconstitutes the correct branch
+     * on the JS side: each branch's `outcome` discriminator plus its required peer field
+     * (finalText / error / partialText) is exactly the set that is populated.
+     */
+    private fun encodeStreamPayload(payload: Payload): JSObject {
+        return JSObject().apply {
+            payload.text?.let { put("text", it) }
+            payload.phase?.let { put("phase", phaseValue(it)) }
+            payload.finalText?.let { put("finalText", it) }
+            payload.finishReason?.let { put("finishReason", it.rawValue) }
+            payload.outcome?.let { put("outcome", outcomeValue(it)) }
+            payload.runId?.let { put("runId", it) }
+            payload.schemaVersion?.let { put("schemaVersion", it.rawValue) }
+            payload.telemetry?.let { put("telemetry", encodeStreamPayloadTelemetry(it)) }
+            payload.usage?.let { put("usage", encodeStreamPayloadUsage(it)) }
+            payload.error?.let { put("error", encodeStreamPayloadError(it)) }
+            payload.partialText?.let { put("partialText", it) }
+            payload.reason?.let { put("reason", it) }
+        }
+    }
+
+    private fun encodeStreamPayloadError(error: PayloadError): JSObject {
+        return JSObject().apply {
+            put("schemaVersion", error.schemaVersion.rawValue)
+            put("errorClass", error.errorClass.rawValue)
+            put("message", error.message)
+            error.providerId?.let { put("providerId", it) }
+            error.retryable?.let { put("retryable", it) }
+            error.retryAfterMs?.let { put("retryAfterMs", it) }
+            error.details?.let { put("details", JSONObject(it)) }
+        }
+    }
+
+    private fun encodeStreamPayloadTelemetry(telemetry: PayloadTelemetry): JSObject {
+        return JSObject().apply {
+            put("providerUsed", telemetry.providerUsed)
+            put("totalMs", telemetry.totalMs)
+        }
+    }
+
+    private fun encodeStreamPayloadUsage(usage: PayloadUsage): JSObject {
+        return JSObject().apply {
+            usage.inputTokens?.let { put("inputTokens", it) }
+            usage.outputTokens?.let { put("outputTokens", it) }
+            usage.totalTokens?.let { put("totalTokens", it) }
+        }
+    }
+
+    // Outcome and Phase are generated without a rawValue, unlike every other contract enum
+    // here, so the wire strings have to be written out. Both `when`s are exhaustive with no
+    // `else`: if a regeneration ever adds a constant, this must fail to compile rather than
+    // silently serialize the wrong discriminator.
+    private fun outcomeValue(outcome: Outcome): String = when (outcome) {
+        Outcome.Completed -> "completed"
+        Outcome.Error -> "error"
+        Outcome.Cancelled -> "cancelled"
+    }
+
+    private fun phaseValue(phase: Phase): String = when (phase) {
+        Phase.ProviderSelected -> "provider_selected"
+        Phase.Started -> "started"
     }
 
     private fun parseOpenAIOptions(json: JSONObject): OpenAIProviderBootstrapOptions {
