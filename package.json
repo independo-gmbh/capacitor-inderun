@@ -58,8 +58,8 @@
   },
   "dependencies": {
     "@capacitor/core": "^8.0.0",
-    "@independo/inderun-contracts": "^0.2.2",
-    "@independo/inderun-web": "^0.2.2"
+    "@independo/inderun-contracts": "0.3.0-dev.14",
+    "@independo/inderun-web": "0.3.0-dev.14"
   },
   "devDependencies": {
     "@saithodev/semantic-release-backmerge": "^4.0.1",
