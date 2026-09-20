@@ -14,10 +14,15 @@
 
 <p align="center">Built and maintained by <a href="https://www.independo.app/">Independo</a>.</p>
 
-Thin Capacitor bridge for IndeRun Mode 1 `run()` and Mode 2 `stream()` execution.
+**On-device AI with cloud fallback, for Capacitor apps.**
 
-The package delegates to the released [IndeRun](https://github.com/independo-gmbh/inderun)
-platform SDKs instead of re-implementing routing, provider logic, or normalized error handling:
+Runs a prompt on the device when the device can — Apple Foundation Models on iOS, ML Kit GenAI
+(Gemini Nano) on Android — and falls back to an OpenAI-compatible cloud endpoint when it cannot.
+One API across iOS, Android and the web, with streaming and cancellation. MIT.
+
+It is a thin bridge, not a second engine. The package delegates to the released
+[IndeRun](https://github.com/independo-gmbh/inderun) platform SDKs instead of re-implementing
+routing, provider logic, or normalized error handling:
 
 - web: [`@independo/inderun-web`](https://www.npmjs.com/package/@independo/inderun-web) (npm)
 - iOS: `IndeRun` Swift package (`github.com/independo-gmbh/inderun`, SwiftPM)
@@ -38,9 +43,14 @@ Then sync native projects with your normal Capacitor workflow.
 
 | Platform | Minimum version        |
 |----------|------------------------|
-| iOS      | 15.0                   |
+| iOS      | 16.0                   |
 | Android  | API 26 (Android 8.0)   |
 | Web      | Any modern browser     |
+
+The iOS floor comes from the IndeRun Swift package this bridge depends on, not from the bridge
+itself. On-device execution needs more than the floor: Apple Foundation Models requires an Apple
+Intelligence–capable device on iOS 26+, and ML Kit GenAI requires AICore / Gemini Nano support.
+Availability is checked at runtime and the cloud provider serves the request when it is missing.
 
 ## Usage
 
@@ -96,16 +106,16 @@ for await (const event of run.events) {
 run.cancel("user navigated away"); // idempotent; a no-op after the terminal
 ```
 
-Three things worth knowing before you build on it:
+Event semantics, ordering, the terminal guarantees, cancellation and fallback are the engines'
+contract, identical on every platform, and documented once in
+[Streaming (Mode 2)](https://github.com/independo-gmbh/inderun/blob/dev/docs/streaming.md). Two
+things are specific to reaching them through a bridge:
 
-- **Order by `sequence`, not arrival.** The bridge hop is not order-preserving, which is
-  why `sequence` is the contract's ordering authority. `events` already yields strictly by
-  it; if you attach your own listener instead, you must order them yourself.
-- **A failed run is not a rejected promise.** See [Error Handling](#error-handling).
-- **Handle `content_snapshot` even from a token-streaming provider.** A snapshot replaces
-  the cumulative text rather than appending to it, and an empty one is how a provider
-  retracts content it already delivered — for example when an on-device safety check
-  rejects a half-generated response.
+- **The bridge hop is not order-preserving.** That is why `sequence` rather than arrival is the
+  contract's ordering authority. `events` already yields strictly by it; if you attach your own
+  listener to `STREAM_EVENT_NAME` instead, ordering is yours to enforce.
+- **A failed run is not a rejected promise**, and a bridge transport fault is a third thing again.
+  See [Error Handling](#error-handling).
 
 ## API
 
@@ -131,7 +141,11 @@ also carries the bridge-local correlation id. `stream()` hides this.
 - Web requires `openAI` registration because the current web SDK only has the OpenAI-compatible provider.
 - iOS always registers the Apple on-device provider and optionally registers OpenAI when configured.
 - Android always registers the ML Kit on-device provider and optionally registers OpenAI when configured.
-- Keep credentials behind `authContextRef`. For browser apps, prefer a proxy endpoint with `auth: "none"`.
+- Keep credentials behind `authContextRef`. That keeps a secret out of the request payload and out
+  of source; it does not make a key safe to ship, since anything an installed app or a browser can
+  read, someone with that app or browser can read. For a key you own, put it behind a backend you
+  control and point `endpointUrl` at that — for browser apps, a same-origin proxy with
+  `auth: "none"`.
 
 ## Current Limitations
 
