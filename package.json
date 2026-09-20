@@ -1,7 +1,7 @@
 {
   "name": "@independo/capacitor-inderun",
   "version": "1.0.0",
-  "description": "Thin Capacitor bridge for IndeRun across web, iOS, and Android.",
+  "description": "On-device AI with cloud fallback for Capacitor apps. Apple Foundation Models on iOS, ML Kit GenAI (Gemini Nano) on Android, an OpenAI-compatible endpoint as fallback — one API, with streaming and cancellation.",
   "license": "MIT",
   "homepage": "https://github.com/independo-gmbh/capacitor-inderun#readme",
   "repository": {
@@ -13,9 +13,21 @@
   },
   "keywords": [
     "capacitor",
-    "plugin",
+    "capacitor-plugin",
+    "ionic",
     "inderun",
-    "ai"
+    "ai",
+    "llm",
+    "on-device",
+    "on-device-ai",
+    "local-llm",
+    "offline",
+    "cloud-fallback",
+    "streaming",
+    "openai",
+    "gemini-nano",
+    "ml-kit",
+    "foundation-models"
   ],
   "engines": {
     "node": ">=24"
