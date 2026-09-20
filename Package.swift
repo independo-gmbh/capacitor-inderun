@@ -20,7 +20,11 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
-        .package(url: "https://github.com/independo-gmbh/inderun.git", from: "0.2.2")
+        // `exact:` rather than `from:` while tracking a prerelease: SwiftPM's range
+        // operators exclude prerelease versions, so `from: "0.3.0-dev.14"` would
+        // silently keep resolving 0.2.2 and fail on the missing stream(). Move back
+        // to `from: "0.3.0"` once the stable release is out.
+        .package(url: "https://github.com/independo-gmbh/inderun.git", exact: "0.3.0-dev.14")
     ],
     targets: [
         .target(
