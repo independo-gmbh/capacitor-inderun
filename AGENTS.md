@@ -2,16 +2,25 @@
 
 ## Project Structure & Module Organization
 - `src/` holds the TypeScript bridge: `definitions.ts` (plugin contract types — `ConfigureOptions`,
-  `OpenAIProviderBootstrapOptions`, `IndeRunCapacitorPlugin`), `index.ts` (registers the Capacitor
-  plugin via `registerPlugin`, exposes `IndeRunCapacitor` and the `createIndeRunCapacitor()` helper
-  that lazily configures and memoizes), `web.ts` (the web fallback implementation, `IndeRunWeb`,
-  wired to `@independo/inderun-web`).
+  `OpenAIProviderBootstrapOptions`, `IndeRunCapacitorPlugin`, and the Mode 2 envelopes), `index.ts`
+  (registers the Capacitor plugin via `registerPlugin`, exposes `IndeRunCapacitor` and the
+  `createIndeRunCapacitor()` helper that lazily configures and memoizes), `streaming.ts` (the Mode 2
+  reassembly: `StreamSink`, `StreamDispatcher`, `startCapacitorStream`), `errors.ts`
+  (`normalizePluginError`, `createBridgeError`), `web.ts` (the web fallback implementation,
+  `IndeRunWeb`, wired to `@independo/inderun-web`).
 - Native implementations live in `android/` (Gradle module, plugin entry under
-  `android/src/main/`) and `ios/Sources/IndeRunCapacitorPlugin/` (`IndeRunCapacitorPlugin.swift` is
-  the Capacitor plugin surface, `IndeRunCapacitorBridge.swift` bridges to the native IndeRun Swift
-  package). The SwiftPM manifest is `Package.swift`.
-- Tests: `src/web.test.ts` (Vitest), `android/src/test/` (JVM unit tests), `ios/Tests/` (Swift
+  `android/src/main/`, with `IndeRunStreamRegistry.kt` tracking live streaming runs) and
+  `ios/Sources/IndeRunCapacitorPlugin/` (`IndeRunCapacitorPlugin.swift` is the Capacitor plugin
+  surface, `IndeRunCapacitorBridge.swift` bridges to the native IndeRun Swift package,
+  `IndeRunCapacitorStreamRegistry.swift` is the iOS counterpart of the Kotlin registry). The SwiftPM
+  manifest is `Package.swift`.
+- Tests: `src/*.test.ts` (Vitest), `android/src/test/` (JVM unit tests), `ios/Tests/` (Swift
   Testing/XCTest). Build output goes to `dist/` — do not edit or commit it.
+- `example-app/` is an unpublished Capacitor app for device smoke-testing streaming. It is excluded
+  from the npm package by the `files` allowlist, from SwiftPM by the explicit target paths, and from
+  CI because every job is root-scoped. Do **not** add it to `pnpm-workspace.yaml`: that file has no
+  `packages:` key, so pnpm treats the root as a single package, and adding it would drag the example
+  into `--frozen-lockfile`.
 - This repo is deliberately a **thin bridge only**: it delegates routing, provider logic, and error
   normalization to the released IndeRun platform SDKs (`@independo/inderun-web` on npm, the
   `IndeRun` Swift package, `app.independo.inderun:inderun-*` on Maven Central). Native SDK behavior
@@ -36,6 +45,12 @@
 - Keep the bridge thin: new logic that isn't Capacitor-specific plumbing (marshaling errors between
   native/web and the shared `IndeRunError` contract, registering the plugin) belongs upstream in
   `inderun`, not in this repo.
+- The Mode 2 reorder buffer is transport plumbing, not orchestration. It exists because the bridge
+  hop can reorder delivery and `StreamEvent.sequence` is the contract's ordering authority. It must
+  never decide a run's outcome: it does not synthesize terminal events, retry, choose providers, or
+  apply fallback. Anything resembling routing, fallback, or terminal policy belongs upstream. The
+  same rule is why the two native registries cancel the `StreamRun` rather than the pumping
+  task/job — the engine owns the one `cancelled` terminal, the bridge only delivers it.
 
 ## Testing Guidelines
 - Vitest specs live beside their source as `*.test.ts` (e.g. `src/web.test.ts`); prefer asserting
@@ -53,7 +68,15 @@
 - Do not commit `dist/` or other generated build output.
 
 ## Versioning Policy
-- This package's `MAJOR.MINOR` tracks the `inderun` monorepo's own npm package versions
-  (`@independo/inderun-web`, `@independo/inderun-contracts`) — a hard rule for `MAJOR`, generally
-  followed for `MINOR`. `PATCH` is independent: an `inderun` patch triggers a matching patch here,
-  but not the reverse.
+- This package versions **independently**, under plain semver, driven by `semantic-release` off the
+  commit messages in this repo.
+- It does *not* mirror the `inderun` monorepo's version. An earlier rule said `MAJOR.MINOR` tracked
+  the monorepo's npm packages; that was already untrue in practice (this package reached 1.0.0
+  against `inderun` 0.2.2) and pinning two independently released artifacts to one number made
+  neither version mean anything. It has been dropped rather than quietly broken again.
+- State the supported `inderun` range in `README.md` instead, and bump the dependency pins in
+  `package.json`, `Package.swift`, and `android/build.gradle.kts` together — a partial bump is how
+  the three platforms drift apart.
+- While the bridge tracks an `inderun` prerelease, pin it exactly on every platform. In particular
+  SwiftPM's `from:`/`.upToNextMajor` range operators **exclude** prerelease versions, so `from:` on a
+  `-dev.N` silently resolves the older stable and the build fails somewhere far from the cause.

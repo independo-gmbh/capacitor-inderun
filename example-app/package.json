@@ -1,0 +1,24 @@
+{
+  "name": "@independo/capacitor-inderun-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Device smoke-test app for the IndeRun Capacitor bridge. Not published.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "sync": "cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@independo/capacitor-inderun": "file:.."
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>IndeRun Bridge Example</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #16181d;
+        --muted: #5f6672;
+        --line: #d9dde3;
+        --accent: #2f5bd7;
+        --danger: #b3261e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14161a;
+          --fg: #e9ecf1;
+          --muted: #9aa2ae;
+          --line: #2c313a;
+          --accent: #7f9bff;
+          --danger: #f2b8b5;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: env(safe-area-inset-top) 16px 24px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      h1 { font-size: 1.15rem; margin: 20px 0 4px; }
+      p.sub { margin: 0 0 16px; color: var(--muted); font-size: 0.85rem; }
+      label { display: block; font-size: 0.78rem; color: var(--muted); margin: 10px 0 4px; }
+      input, textarea {
+        width: 100%;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+      }
+      textarea { min-height: 72px; resize: vertical; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+      button {
+        flex: 1 1 auto;
+        min-width: 120px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-weight: 600;
+      }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button:disabled { opacity: 0.45; }
+      section { margin-top: 18px; }
+      h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 6px; }
+      #output {
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 72px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      #log {
+        margin: 0;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        max-height: 240px;
+        overflow: auto;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre-wrap;
+      }
+      #log .err { color: var(--danger); }
+      #status { font-size: 0.85rem; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <h1>IndeRun Bridge Example</h1>
+    <p class="sub">Device smoke test for Mode 1 <code>run()</code> and Mode 2 <code>stream()</code>.</p>
+
+    <label for="endpoint">Proxy endpoint (OpenAI-compatible, no credentials in this app)</label>
+    <input id="endpoint" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
+           placeholder="https://your-proxy.example/api/openai-responses" />
+
+    <label for="model">Model</label>
+    <input id="model" type="text" autocapitalize="off" autocorrect="off" value="gpt-5.2" />
+
+    <label for="prompt">Prompt</label>
+    <textarea id="prompt">Explain deterministic provider routing in two sentences.</textarea>
+
+    <div class="row">
+      <button id="run">Run (Mode 1)</button>
+      <button id="stream" class="primary">Stream (Mode 2)</button>
+    </div>
+    <div class="row">
+      <button id="cancel" disabled>Cancel</button>
+      <button id="two">Start two runs</button>
+    </div>
+
+    <p id="status">Idle.</p>
+
+    <section>
+      <h2>Output</h2>
+      <div id="output"></div>
+    </section>
+
+    <section>
+      <h2>Events (runId · sequence · type)</h2>
+      <pre id="log"></pre>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -9,10 +9,19 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "IndeRunCapacitor"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "configure", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "run", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "run", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "startStream", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "cancelStream", returnType: CAPPluginReturnPromise)
     ]
 
     private let implementation = IndeRunCapacitorBridge()
+
+    /// CAPPlugin has no teardown hook — `load()` has no counterpart — so deinit is
+    /// the only place left to stop runs the webview can no longer receive. The pump
+    /// tasks hold `self` weakly precisely so this can run.
+    deinit {
+        implementation.teardownStreams()
+    }
 
     @objc func configure(_ call: CAPPluginCall) {
         do {
@@ -45,6 +54,66 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
                 let details = try? implementation.encode(error: contractError)
                 call.reject(contractError.message, contractError.errorClass.rawValue, normalized, details)
             }
+        }
+    }
+
+    /// Resolves with the run handle. Only validation and route-selection failures
+    /// reject here; a provider failure, a cancellation, or completion all arrive as
+    /// the single terminal event on `indeRunStreamEvent`.
+    ///
+    /// `retainUntilConsumed` closes the listener-registration race from the native
+    /// side: an event emitted before the JS listener is attached is retained and
+    /// replayed rather than lost.
+    @objc func startStream(_ call: CAPPluginCall) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let handle = try await self.implementation.startStream(
+                    options: call.options,
+                    onEvent: { [weak self] streamId, event in
+                        self?.notifyListeners(
+                            "indeRunStreamEvent",
+                            data: ["streamId": streamId, "event": event],
+                            retainUntilConsumed: true
+                        )
+                    },
+                    onError: { [weak self] streamId, error in
+                        self?.notifyListeners(
+                            "indeRunStreamError",
+                            data: ["streamId": streamId, "error": error],
+                            retainUntilConsumed: true
+                        )
+                    }
+                )
+                call.resolve(handle)
+            } catch let error as IndeRunException {
+                let contractError = error.toContractError()
+                let details = try? self.implementation.encode(error: contractError)
+                call.reject(contractError.message, contractError.errorClass.rawValue, error, details)
+            } catch {
+                let normalized = toIndeRunException(error)
+                let contractError = normalized.toContractError()
+                let details = try? self.implementation.encode(error: contractError)
+                call.reject(contractError.message, contractError.errorClass.rawValue, normalized, details)
+            }
+        }
+    }
+
+    /// Resolves for an unknown or already-finished run: cancelling after the terminal
+    /// is a no-op by contract, not an error.
+    @objc func cancelStream(_ call: CAPPluginCall) {
+        do {
+            try implementation.cancelStream(options: call.options)
+            call.resolve()
+        } catch let error as IndeRunException {
+            let contractError = error.toContractError()
+            let details = try? implementation.encode(error: contractError)
+            call.reject(contractError.message, contractError.errorClass.rawValue, error, details)
+        } catch {
+            let normalized = toIndeRunException(error)
+            let contractError = normalized.toContractError()
+            let details = try? implementation.encode(error: contractError)
+            call.reject(contractError.message, contractError.errorClass.rawValue, normalized, details)
         }
     }
 }
