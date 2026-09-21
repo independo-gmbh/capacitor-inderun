@@ -16,7 +16,8 @@ vi.mock("@independo/inderun-web", async () => {
   };
 });
 
-import { IndeRunCapacitor } from "./index.js";
+import { createIndeRunCapacitor, IndeRunCapacitor } from "./index.js";
+import type { ProviderCapabilitySnapshot } from "./definitions.js";
 import { IndeRunWeb } from "./web.js";
 
 describe("IndeRunWeb", () => {
@@ -121,6 +122,94 @@ describe("IndeRunWeb", () => {
       schemaVersion: "1.0",
       errorClass: "AuthError",
       message: "Missing authContextRef."
+    });
+  });
+
+  describe("checkCapabilities", () => {
+    const snapshot: ProviderCapabilitySnapshot = {
+      providerId: "openai",
+      descriptor: {
+        id: "openai",
+        type: "cloud",
+        transport: "http",
+        streamingStyle: "tokens",
+        supports: {
+          run: true,
+          streaming: true,
+          realtime: false,
+          tools: false,
+          reasoningEvents: false,
+          structuredOutput: false,
+          multimodal: false
+        },
+        cancel: "hard",
+        tasks: ["text_to_text"],
+        privacy: { dataLeavesDevice: true }
+      },
+      capabilities: { available: true }
+    };
+
+    it("returns the SDK's snapshots verbatim inside the providers envelope", async () => {
+      const checkCapabilitiesMock = vi.fn().mockResolvedValue([snapshot]);
+      createIndeRunWebMock.mockReturnValue({ checkCapabilities: checkCapabilitiesMock });
+
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { model: "gpt-5.2" } });
+
+      await expect(plugin.checkCapabilities()).resolves.toStrictEqual({ providers: [snapshot] });
+      expect(checkCapabilitiesMock).toHaveBeenCalledOnce();
+    });
+
+    it("omits streamingAvailable rather than reporting it as null when the SDK leaves it unset", async () => {
+      // Absence means "inherit descriptor.supports.streaming". A null would be a
+      // third state the consumers do not have, which is why both native encoders
+      // drop the key. The web path gets it for free; assert it anyway.
+      createIndeRunWebMock.mockReturnValue({
+        checkCapabilities: vi.fn().mockResolvedValue([snapshot])
+      });
+
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { model: "gpt-5.2" } });
+
+      const { providers } = await plugin.checkCapabilities();
+      expect(providers[0].capabilities).not.toHaveProperty("streamingAvailable");
+      expect(providers[0].capabilities).not.toHaveProperty("cancellationAvailable");
+    });
+
+    it("returns a normalized contract error when called before configure()", async () => {
+      const plugin = new IndeRunWeb();
+
+      await expect(plugin.checkCapabilities()).rejects.toMatchObject({
+        schemaVersion: "1.0",
+        errorClass: "Unavailable"
+      });
+    });
+
+    it("normalizes a thrown SDK failure to a contract error", async () => {
+      createIndeRunWebMock.mockReturnValue({
+        checkCapabilities: vi.fn().mockRejectedValue(new Error("registry exploded"))
+      });
+
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { model: "gpt-5.2" } });
+
+      await expect(plugin.checkCapabilities()).rejects.toMatchObject({
+        schemaVersion: "1.0",
+        errorClass: "Internal"
+      });
+    });
+
+    it("unwraps the envelope on the facade and configures exactly once per instance", async () => {
+      const checkCapabilitiesMock = vi.fn().mockResolvedValue([snapshot]);
+      createIndeRunWebMock.mockReturnValue({ checkCapabilities: checkCapabilitiesMock });
+
+      const inderun = createIndeRunCapacitor({ openAI: { model: "gpt-5.2" } });
+
+      await expect(inderun.checkCapabilities()).resolves.toStrictEqual([snapshot]);
+      await expect(inderun.checkCapabilities()).resolves.toStrictEqual([snapshot]);
+
+      expect(createIndeRunWebMock).toHaveBeenCalledOnce();
+      expect(checkCapabilitiesMock).toHaveBeenCalledTimes(2);
     });
   });
 

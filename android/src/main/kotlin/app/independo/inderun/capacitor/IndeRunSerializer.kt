@@ -28,6 +28,9 @@ import app.independo.inderun.contracts.TaskRequestTelemetry
 import app.independo.inderun.contracts.TaskResult
 import app.independo.inderun.contracts.TaskResultTelemetry
 import app.independo.inderun.contracts.TelemetryLevel
+import app.independo.inderun.core.ProviderCapabilitySnapshot
+import app.independo.inderun.core.ProviderDescriptor
+import app.independo.inderun.core.ProviderDynamicCapabilities
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import org.json.JSONArray
@@ -110,6 +113,100 @@ object IndeRunSerializer {
             error.retryAfterMs?.let { put("retryAfterMs", it) }
             error.runId?.let { put("runId", it) }
             error.details?.let { put("details", JSONObject(it)) }
+        }
+    }
+
+    /**
+     * Wire encoding for `checkCapabilities()`.
+     *
+     * Note the enums are written with `.name`, which is the opposite of what
+     * [encodeOutcome] and [encodePhase] below have to do. Those contract enums are
+     * generated without raw values, so their Kotlin constant names are camelCase and the
+     * snake_case wire spelling has to be written by hand. `ProviderDescriptor`'s enums are
+     * declared with the wire spelling *as* the constant name (`in_process`,
+     * `system_service`), so `.name` already is the wire value — and writing them by hand
+     * here would be the thing that eventually drifts.
+     *
+     * The array is wrapped in a `providers` object because a Capacitor `PluginCall` cannot
+     * resolve a top-level array. `IndeRunCapacitor` unwraps it on the JS side.
+     */
+    fun encodeCapabilitySnapshots(snapshots: List<ProviderCapabilitySnapshot>): JSObject {
+        return JSObject().apply {
+            put(
+                "providers",
+                JSArray().apply {
+                    snapshots.forEach { snapshot ->
+                        put(
+                            JSObject().apply {
+                                put("providerId", snapshot.providerId)
+                                put("descriptor", encodeProviderDescriptor(snapshot.descriptor))
+                                put("capabilities", encodeProviderDynamicCapabilities(snapshot.capabilities))
+                            }
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    private fun encodeProviderDescriptor(descriptor: ProviderDescriptor): JSObject {
+        return JSObject().apply {
+            put("id", descriptor.id)
+            put("type", descriptor.type.name)
+            put("transport", descriptor.transport.name)
+            descriptor.streamingStyle?.let { put("streamingStyle", it.name) }
+            put(
+                "supports",
+                JSObject().apply {
+                    put("run", descriptor.supports.run)
+                    put("streaming", descriptor.supports.streaming)
+                    put("realtime", descriptor.supports.realtime)
+                    put("tools", descriptor.supports.tools)
+                    put("reasoningEvents", descriptor.supports.reasoningEvents)
+                    put("structuredOutput", descriptor.supports.structuredOutput)
+                    put("multimodal", descriptor.supports.multimodal)
+                }
+            )
+            put("cancel", descriptor.cancel.name)
+            put("tasks", JSArray().apply { descriptor.tasks.forEach { put(it) } })
+            descriptor.limits?.let { limits ->
+                put(
+                    "limits",
+                    JSObject().apply {
+                        limits.maxInputTokens?.let { put("maxInputTokens", it) }
+                        limits.maxOutputTokens?.let { put("maxOutputTokens", it) }
+                        limits.maxImageBytes?.let { put("maxImageBytes", it) }
+                        limits.maxAudioSeconds?.let { put("maxAudioSeconds", it) }
+                    }
+                )
+            }
+            descriptor.privacy?.let { privacy ->
+                put(
+                    "privacy",
+                    JSObject().apply {
+                        put("dataLeavesDevice", privacy.dataLeavesDevice)
+                        privacy.regions?.let { regions ->
+                            put("regions", JSArray().apply { regions.forEach { put(it) } })
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * The three nullable flags are **omitted** rather than written as null. Absence is the
+     * contract's "inherit the static declaration" state — `descriptor.supports.streaming`
+     * for streaming, `descriptor.cancel != none` for cancellation — and a null would be a
+     * third state no consumer has.
+     */
+    private fun encodeProviderDynamicCapabilities(capabilities: ProviderDynamicCapabilities): JSObject {
+        return JSObject().apply {
+            put("available", capabilities.available)
+            capabilities.reason?.let { put("reason", it) }
+            capabilities.streamingAvailable?.let { put("streamingAvailable", it) }
+            capabilities.streamingUnavailableReason?.let { put("streamingUnavailableReason", it) }
+            capabilities.cancellationAvailable?.let { put("cancellationAvailable", it) }
         }
     }
 

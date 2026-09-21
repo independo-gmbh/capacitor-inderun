@@ -67,9 +67,92 @@ export interface StreamRun {
   cancel(reason?: string): void;
 }
 
+/**
+ * A provider's static capability declaration.
+ *
+ * Declared here rather than imported, because — unlike `TaskRequest`, `StreamEvent` and
+ * the rest — this shape is *not* a generated contract. There is no schema for it in
+ * `@independo/inderun-contracts` and no validator; each SDK declares it independently
+ * (`core/provider.d.ts` in `@independo/inderun-web`, `IndeRunCore/Provider.swift`,
+ * `core/Provider.kt`), and this is the fourth copy. Importing it from
+ * `@independo/inderun-web` is not an option either: that would make the native
+ * platforms' plugin contract depend on the web SDK.
+ *
+ * The drift guard is in `web.ts`, which returns the web SDK's value into this type
+ * uncast — so `tsc` proves the shapes still match on every build, the same way the
+ * `StreamRun` mirror below is checked. See the upstream follow-up asking for a schema.
+ */
+export interface ProviderDescriptor {
+  id: string;
+  type: "local" | "edge" | "cloud";
+  transport: "in_process" | "system_service" | "http" | "sse" | "realtime";
+  streamingStyle?: "tokens" | "chunks" | "snapshots";
+  supports: {
+    run: boolean;
+    streaming: boolean;
+    realtime: boolean;
+    tools: boolean;
+    reasoningEvents: boolean;
+    structuredOutput: boolean;
+    multimodal: boolean;
+  };
+  cancel: "hard" | "soft" | "none";
+  tasks: string[];
+  limits?: {
+    maxInputTokens?: number;
+    maxOutputTokens?: number;
+    maxImageBytes?: number;
+    maxAudioSeconds?: number;
+  };
+  privacy?: {
+    dataLeavesDevice: boolean;
+    regions?: string[];
+  };
+}
+
+/**
+ * A provider's live availability, as of the moment `checkCapabilities()` was called.
+ *
+ * `streamingAvailable` and `cancellationAvailable` are **absent**, not `null`, when the
+ * runtime has nothing to say: absence means *inherit the static declaration*
+ * (`descriptor.supports.streaming`, and `descriptor.cancel !== "none"`). Both native
+ * encoders omit the key rather than emitting null for exactly that reason.
+ */
+export interface ProviderDynamicCapabilities {
+  available: boolean;
+  reason?: string;
+  streamingAvailable?: boolean;
+  streamingUnavailableReason?: string;
+  cancellationAvailable?: boolean;
+}
+
+/** One registered provider's identity, static declaration, and live availability. */
+export interface ProviderCapabilitySnapshot {
+  providerId: string;
+  descriptor: ProviderDescriptor;
+  capabilities: ProviderDynamicCapabilities;
+}
+
+/**
+ * Envelope for `checkCapabilities()`. The array is wrapped because a Capacitor plugin
+ * method must resolve an object on both native platforms — `PluginCall.resolve(JSObject)`
+ * and `call.resolve([String: Any])` cannot carry a top-level array. `IndeRunCapacitor`
+ * and `createIndeRunCapacitor()` unwrap it, so app code sees the same
+ * `ProviderCapabilitySnapshot[]` the three platform SDKs return.
+ */
+export interface CheckCapabilitiesResult {
+  providers: ProviderCapabilitySnapshot[];
+}
+
 export interface IndeRunCapacitorPlugin {
   configure(options?: ConfigureOptions): Promise<void>;
   run(request: TaskRequest): Promise<TaskResult>;
+  /**
+   * Live snapshot of every registered provider, without executing a task. Availability
+   * changes between calls — a local model can unload, cloud credentials can expire — so
+   * do not cache it across a `run()` or `stream()`.
+   */
+  checkCapabilities(): Promise<CheckCapabilitiesResult>;
   /**
    * Unlike `run(request)`, which passes the request at the options root, this nests it
    * under `request` so the envelope can also carry `streamId`. Both native decode sites

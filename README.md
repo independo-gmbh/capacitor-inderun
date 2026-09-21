@@ -141,6 +141,7 @@ things are specific to reaching them through a bridge:
 - `createIndeRunCapacitor(options)` — returns a handle that lazily `configure()`s on the first `run()` or `stream()` and memoizes it. Safe to call once at app startup.
 - `run(request)` — Mode 1. Resolves with the canonical IndeRun `TaskResult`.
 - `stream(request)` — Mode 2. Resolves with a `StreamRun` (`handle`, `events`, `cancel`). `events` is single-use.
+- `checkCapabilities()` — every registered provider's static declaration and live availability, without executing a task. Resolves with `ProviderCapabilitySnapshot[]`. Use it for a provider or settings screen; availability changes between calls, so do not cache it across a `run()` or `stream()`.
 - The low-level plugin methods `configure(options)`, `startStream(options)` and `cancelStream(options)` are also exported, along with the listener event names `STREAM_EVENT_NAME` (`"indeRunStreamEvent"`) and `STREAM_ERROR_NAME` (`"indeRunStreamError"`).
 
 > The two listener event names are **public contract**. Native emits exactly these, and an
@@ -151,9 +152,24 @@ contracts — including the `openAI` bootstrap config and the web-only
 `allowDirectOpenAIEndpoint` flag — are defined and documented in
 `src/definitions.ts`.
 
-Note one asymmetry in the low-level surface: `run(request)` passes the request at the
-options root, while `startStream({ streamId, request })` nests it, because that envelope
-also carries the bridge-local correlation id. `stream()` hides this.
+Two asymmetries in the low-level surface, both hidden by the ergonomic API:
+
+- `run(request)` passes the request at the options root, while
+  `startStream({ streamId, request })` nests it, because that envelope also carries the
+  bridge-local correlation id. `stream()` hides this.
+- The plugin method `checkCapabilities()` resolves `{ providers: [...] }` rather than the
+  array itself, because a Capacitor plugin method cannot resolve a top-level array on
+  either native platform. `IndeRunCapacitor.checkCapabilities()` unwraps it, so app code
+  sees the same array the three platform SDKs return.
+
+`ProviderCapabilitySnapshot` and the `ProviderDescriptor` /
+`ProviderDynamicCapabilities` it contains are declared in `src/definitions.ts` rather than
+imported, because — unlike `TaskRequest` or `StreamEvent` — they are not generated
+contracts: each platform SDK declares its own copy and there is no schema or validator for
+them upstream. `src/web.ts` returns the web SDK's snapshots into the bridge's type uncast,
+so the shapes staying identical is a compile error rather than a convention. Note
+`capabilities.streamingAvailable` and `cancellationAvailable` are **absent**, not `null`,
+when the runtime has nothing to add: absence means *inherit the static declaration*.
 
 ## Platform Notes
 

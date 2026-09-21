@@ -3,6 +3,7 @@ import { WebPlugin } from "@capacitor/core";
 import { createIndeRunWeb, createUnavailable, toIndeRunException } from "@independo/inderun-web";
 import type {
   CancelStreamOptions,
+  CheckCapabilitiesResult,
   ConfigureOptions,
   IndeRunCapacitorPlugin,
   StartStreamOptions,
@@ -61,6 +62,23 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
 
     try {
       return await this.engine.run(request);
+    } catch (error) {
+      throw toIndeRunException(error).toContractError();
+    }
+  }
+
+  async checkCapabilities(): Promise<CheckCapabilitiesResult> {
+    if (!this.engine) {
+      throw createUnavailable(
+        "Capacitor IndeRun has not been configured. Configure providers before calling checkCapabilities()."
+      ).toContractError();
+    }
+
+    try {
+      // Deliberately uncast: the engine's snapshots are assigned straight into the
+      // bridge's own `ProviderCapabilitySnapshot`, so the two declarations staying
+      // identical is a compile error rather than a convention. See definitions.ts.
+      return { providers: await this.engine.checkCapabilities() };
     } catch (error) {
       throw toIndeRunException(error).toContractError();
     }
