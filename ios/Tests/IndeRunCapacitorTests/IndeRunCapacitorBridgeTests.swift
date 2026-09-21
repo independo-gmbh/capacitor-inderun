@@ -151,6 +151,52 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         XCTAssertEqual(encoded["runId"] as? String, "run_abc")
     }
 
+    /// A routing refusal carries its plan diagnostics on `details`, and since inderun 0.3.0
+    /// it does so on iOS too, not just on the web SDK. The shape is nested — a
+    /// `rejectedProviders` array of objects each carrying its own `reasons` array — and it
+    /// crosses as `[String: JSONAny]`. This is the data a provider-refusal UI reads, so a
+    /// regression would be invisible until a demo showed an empty table.
+    func testEncodesNestedRoutePlanDiagnosticsInDetails() throws {
+        let bridge = IndeRunCapacitorBridge()
+        let error = IndeRunError(
+            details: [
+                "failureCode": JSONAny("CapabilityMismatch"),
+                "rejectedProviders": JSONAny([
+                    [
+                        "providerId": "apple.foundation-models",
+                        "reasons": [["code": "capability_unavailable", "message": "Apple Intelligence unavailable."]]
+                    ],
+                    [
+                        "providerId": "openai",
+                        "reasons": [["code": "privacy_constraint", "message": "local_required forbids cloud."]]
+                    ]
+                ])
+            ],
+            errorClass: .CapabilityMismatch,
+            message: "No eligible provider can stream this request.",
+            providerId: nil,
+            retryable: nil,
+            retryAfterMs: nil,
+            runId: nil,
+            schemaVersion: .the10
+        )
+
+        let encoded = try bridge.encode(error: error)
+        let details = try XCTUnwrap(encoded["details"] as? [String: Any])
+        XCTAssertEqual(details["failureCode"] as? String, "CapabilityMismatch")
+
+        let rejected = try XCTUnwrap(details["rejectedProviders"] as? [[String: Any]])
+        XCTAssertEqual(rejected.count, 2)
+        XCTAssertEqual(rejected[0]["providerId"] as? String, "apple.foundation-models")
+
+        let reasons = try XCTUnwrap(rejected[0]["reasons"] as? [[String: Any]])
+        XCTAssertEqual(reasons[0]["code"] as? String, "capability_unavailable")
+        XCTAssertEqual(
+            (try XCTUnwrap(rejected[1]["reasons"] as? [[String: Any]]))[0]["code"] as? String,
+            "privacy_constraint"
+        )
+    }
+
     // MARK: - encode(capabilities:)
 
     private func makeSnapshot(
