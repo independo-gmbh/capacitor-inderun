@@ -12,11 +12,11 @@ importers:
         specifier: ^8.0.0
         version: 8.4.1
       '@independo/inderun-contracts':
-        specifier: 0.3.0-dev.14
-        version: 0.3.0-dev.14
+        specifier: 0.3.0
+        version: 0.3.0
       '@independo/inderun-web':
-        specifier: 0.3.0-dev.14
-        version: 0.3.0-dev.14
+        specifier: 0.3.0
+        version: 0.3.0
     devDependencies:
       '@saithodev/semantic-release-backmerge':
         specifier: ^4.0.1
@@ -228,16 +228,16 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@independo/inderun-contracts@0.3.0-dev.14':
-    resolution: {integrity: sha512-HM6c9auN7j2sz7QMBe+MWohWTCvHFZJ3KOJ+QlXbm57CPAdafjfhfu80CFRQhIBPH/btsmd9tUrw3NMocMDFQg==}
+  '@independo/inderun-contracts@0.3.0':
+    resolution: {integrity: sha512-AhxWYjamUrOOx9F2gB0Es+ezH+n/whLv7yw1yTO/5jbiHAffvgNYF7O3kodbhtxIrFpDUMu7eHMFpMmkT9/oQA==}
     engines: {node: '>=24'}
 
-  '@independo/inderun-route-core-wasm@0.3.0-dev.14':
-    resolution: {integrity: sha512-CmzkmQ4zKQB0uj6XIcdtMj5nfqW12lsN4duqFhIv+pK5j2wgQ8j1v6O+ORFN/G3cbxmE60XCybTHGwBsKpQLwA==}
+  '@independo/inderun-route-core-wasm@0.3.0':
+    resolution: {integrity: sha512-bQC8m2EVyJyX9D1qdUZ1KQ4r/pNkXxKWU5/1vFvfqMn9vGqOjYiccl8IhAKSnvh0Cp4ddAtnNgTRc2d3doS3rw==}
     engines: {node: '>=24'}
 
-  '@independo/inderun-web@0.3.0-dev.14':
-    resolution: {integrity: sha512-K+jw+A8WutEvWeLQnGnJnD7f5SAnJ0QNRDcbyVUVbfh1si8trPQfdCXczbgfjI8Nu6lZSMw3yXnOt56F8qM9TA==}
+  '@independo/inderun-web@0.3.0':
+    resolution: {integrity: sha512-7zPyIqhc/DddOFBHODIlGHjX3vg9KV91TP3Nkpnn5aVGXeveJLoyA2+V/GjfhKYqsRGCyIk0Q0Ew1nLloZilWg==}
     engines: {node: '>=24'}
     peerDependencies:
       '@huggingface/transformers': ^4.0.0
@@ -2487,16 +2487,16 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@independo/inderun-contracts@0.3.0-dev.14':
+  '@independo/inderun-contracts@0.3.0':
     dependencies:
       ajv: 8.20.0
 
-  '@independo/inderun-route-core-wasm@0.3.0-dev.14': {}
+  '@independo/inderun-route-core-wasm@0.3.0': {}
 
-  '@independo/inderun-web@0.3.0-dev.14':
+  '@independo/inderun-web@0.3.0':
     dependencies:
-      '@independo/inderun-contracts': 0.3.0-dev.14
-      '@independo/inderun-route-core-wasm': 0.3.0-dev.14
+      '@independo/inderun-contracts': 0.3.0
+      '@independo/inderun-route-core-wasm': 0.3.0
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 
