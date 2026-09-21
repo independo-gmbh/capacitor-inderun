@@ -52,6 +52,63 @@ itself. On-device execution needs more than the floor: Apple Foundation Models r
 Intelligence–capable device on iOS 26+, and ML Kit GenAI requires AICore / Gemini Nano support.
 Availability is checked at runtime and the cloud provider serves the request when it is missing.
 
+## Host Project Requirements
+
+The IndeRun SDKs this bridge wraps are newer than a freshly generated Capacitor app's
+defaults, so `cap add` alone is not enough. Each of these is a hard requirement — the
+corresponding build failure is named so it is searchable:
+
+**Android** (`android/variables.gradle` and `android/build.gradle` in your app):
+
+| Setting | Value | Failure if unset |
+|---|---|---|
+| `compileSdkVersion` | `37` | *"requires libraries and applications that depend on it to compile against version 37 or later"* |
+| `minSdkVersion` | `26` | manifest merger conflict |
+| Android Gradle Plugin | `9.1.0`+ (Gradle 9.x) | *"requires Android Gradle plugin 9.1.0 or higher"* |
+| `org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10` on the app's `buildscript` classpath | — | *"Module was compiled with an incompatible version of Kotlin … metadata is 2.4.0, expected version is 2.2.0"* |
+
+The Kotlin one is the surprising entry: the `inderun-*` artifacts carry Kotlin 2.4.x
+metadata, which the Kotlin plugin AGP brings by default cannot read. The plugin's own build
+hoists a newer KGP for its standalone build, but a consuming app resolves KGP from its own
+buildscript classpath, so the app has to add it too:
+
+```groovy
+// android/build.gradle
+buildscript {
+    dependencies {
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10'
+    }
+}
+```
+
+AGP 9 also rejects `getDefaultProguardFile('proguard-android.txt')`; switch to
+`proguard-android-optimize.txt`.
+
+**iOS**: set `IPHONEOS_DEPLOYMENT_TARGET` to `16.0` in your Xcode project **before**
+`npx cap sync ios`. The Capacitor CLI reads that value to generate `CapApp-SPM/Package.swift`,
+so syncing with the default leaves a manifest pinned below this package's floor and the build
+fails with *"requires minimum platform version 16.0 for the iOS platform, but this target
+supports 15.0"*.
+
+## Supported IndeRun Version
+
+This release tracks **IndeRun 0.3.0** on all three platforms:
+
+| Platform | Artifact | Constraint |
+|----------|----------|------------|
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.3.0` (exact) |
+| iOS      | `inderun` SwiftPM package | `>=0.3.0 <0.4.0` |
+| Android  | `app.independo.inderun:inderun-*` | `0.3.0` (exact) |
+
+The npm and Gradle pins are exact and all three are bumped together — a partial bump is how the
+platforms drift apart. The SwiftPM constraint is ranged rather than exact so an app that also depends
+on `inderun` directly can still unify its package graph; it stops at the next minor because that is
+where an 0.x SDK's breaking changes live.
+
+This package versions **independently** of the IndeRun monorepo under plain semver — the numbers are
+unrelated, and this bridge's own version says nothing about which IndeRun release it wraps. Read that
+off the table above.
+
 ## Usage
 
 ```ts
@@ -122,23 +179,55 @@ things are specific to reaching them through a bridge:
 - `createIndeRunCapacitor(options)` — returns a handle that lazily `configure()`s on the first `run()` or `stream()` and memoizes it. Safe to call once at app startup.
 - `run(request)` — Mode 1. Resolves with the canonical IndeRun `TaskResult`.
 - `stream(request)` — Mode 2. Resolves with a `StreamRun` (`handle`, `events`, `cancel`). `events` is single-use.
+- `checkCapabilities()` — every registered provider's static declaration and live availability, without executing a task. Resolves with `ProviderCapabilitySnapshot[]`. Use it for a provider or settings screen; availability changes between calls, so do not cache it across a `run()` or `stream()`.
 - The low-level plugin methods `configure(options)`, `startStream(options)` and `cancelStream(options)` are also exported, along with the listener event names `STREAM_EVENT_NAME` (`"indeRunStreamEvent"`) and `STREAM_ERROR_NAME` (`"indeRunStreamError"`).
 
 > The two listener event names are **public contract**. Native emits exactly these, and an
 > app may attach its own listener to them; renaming one is a breaking change.
 
-The `IndeRunCapacitorPlugin`, `ConfigureOptions`, and `OpenAIProviderBootstrapOptions`
-contracts — including the `openAI` bootstrap config and the web-only
-`allowDirectOpenAIEndpoint` flag — are defined and documented in
-`src/definitions.ts`.
+The `IndeRunCapacitorPlugin` and `ConfigureOptions` contracts — including the `openAI`,
+`systemModel` and `onnx` bootstrap configs and the `allowDirectOpenAIEndpoint` flag — are
+defined and documented in `src/definitions.ts`.
 
-Note one asymmetry in the low-level surface: `run(request)` passes the request at the
-options root, while `startStream({ streamId, request })` nests it, because that envelope
-also carries the bridge-local correlation id. `stream()` hides this.
+`systemModel`, `onnx` and `allowDirectOpenAIEndpoint` are **web-only** and ignored on iOS
+and Android, which register their own on-device provider from `configure()` regardless.
+`systemModel` registers the browser-managed on-device provider (Chrome's Prompt API) and is
+what makes `constraints.privacy = "local_required"` routable in a browser. Both on-device
+web providers are Mode 1 only.
+
+`onnx` carries two caveats. It needs the consumer to install the optional
+`@huggingface/transformers` peer dependency — this bridge does not declare it — and to
+supply real model weights, because the web SDK's `runtime` injection seam is a function and
+so cannot cross a JSON bridge hop: only the default Transformers.js runtime is reachable
+through `configure()`, never the fixture runtime the upstream demos use offline. Register it
+only when the weights are there; a provider that cannot load turns a clean routing refusal
+into a provider error.
+
+Two asymmetries in the low-level surface, both hidden by the ergonomic API:
+
+- `run(request)` passes the request at the options root, while
+  `startStream({ streamId, request })` nests it, because that envelope also carries the
+  bridge-local correlation id. `stream()` hides this.
+- The plugin method `checkCapabilities()` resolves `{ providers: [...] }` rather than the
+  array itself, because a Capacitor plugin method cannot resolve a top-level array on
+  either native platform. `IndeRunCapacitor.checkCapabilities()` unwraps it, so app code
+  sees the same array the three platform SDKs return.
+
+`ProviderCapabilitySnapshot` and the `ProviderDescriptor` /
+`ProviderDynamicCapabilities` it contains are declared in `src/definitions.ts` rather than
+imported, because — unlike `TaskRequest` or `StreamEvent` — they are not generated
+contracts: each platform SDK declares its own copy and there is no schema or validator for
+them upstream. `src/web.ts` returns the web SDK's snapshots into the bridge's type uncast,
+so the shapes staying identical is a compile error rather than a convention. Note
+`capabilities.streamingAvailable` and `cancellationAvailable` are **absent**, not `null`,
+when the runtime has nothing to add: absence means *inherit the static declaration*.
 
 ## Platform Notes
 
-- Web requires `openAI` registration because the current web SDK only has the OpenAI-compatible provider.
+- Web requires at least one provider to be registered from `configure()`. The web SDK ships an
+  OpenAI-compatible provider, a Web ONNX Runtime provider and a browser system-model provider, but
+  only the OpenAI-compatible one declares streaming support — so a `local_required` **stream** in a
+  browser is refused at routing time, while a `local_required` **run** can be served on-device.
 - iOS always registers the Apple on-device provider and optionally registers OpenAI when configured.
 - Android always registers the ML Kit on-device provider and optionally registers OpenAI when configured.
 - Keep credentials behind `authContextRef`. That keeps a secret out of the request payload and out

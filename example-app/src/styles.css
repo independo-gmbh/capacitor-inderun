@@ -1,0 +1,227 @@
+/*
+ * Moved out of index.html's inline <style> when the demo grew past one screen.
+ * Plain CSS on purpose: the subject of this app is the bridge, and a framework or a
+ * build-time style pipeline would be a second thing to read.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --panel: #f7f8fa;
+  --fg: #16181d;
+  --muted: #5f6672;
+  --line: #d9dde3;
+  --accent: #2f5bd7;
+  --ok: #1a7f4b;
+  --warn: #8a5a00;
+  --danger: #b3261e;
+  --flash: rgba(47, 91, 215, 0.16);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --panel: #1b1e24;
+    --fg: #e9ecf1;
+    --muted: #9aa2ae;
+    --line: #2c313a;
+    --accent: #7f9bff;
+    --ok: #6edc9f;
+    --warn: #e3b341;
+    --danger: #f2b8b5;
+    --flash: rgba(127, 155, 255, 0.2);
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* Several rules below set `display` on a class, which outranks the UA's [hidden] rule — so
+   toggling `el.hidden` would silently do nothing (the caret kept blinking after a run ended;
+   the web-only provider toggle stayed visible on a device). Say it once, here. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  padding: env(safe-area-inset-top) 16px 32px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header { margin: 20px 0 6px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+h1 { font-size: 1.15rem; margin: 0; }
+p.sub { margin: 0 0 16px; color: var(--muted); font-size: 0.85rem; }
+
+h2 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+section { margin-top: 22px; }
+
+label { display: block; font-size: 0.78rem; color: var(--muted); margin: 10px 0 4px; }
+
+input[type="url"], input[type="text"], input[type="number"], textarea, select {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+textarea { min-height: 72px; resize: vertical; }
+
+.fields { display: grid; gap: 0 12px; grid-template-columns: 1fr; }
+@media (min-width: 620px) { .fields { grid-template-columns: 1fr 1fr; } }
+
+.row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+
+button {
+  flex: 1 1 auto;
+  min-width: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: 0.45; }
+
+/* Routing selector: a segmented control, not a provider picker. */
+.segmented { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.segmented button {
+  flex: 1 1 0;
+  min-width: 96px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 8px 6px;
+}
+.segmented button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.note { color: var(--muted); font-size: 0.8rem; margin: 4px 0 0; }
+.note code { font-size: 0.95em; }
+
+.toggles { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; }
+.toggles label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.85rem;
+  color: inherit;
+}
+.toggles input { margin-top: 3px; }
+.toggles span.hint { display: block; color: var(--muted); font-size: 0.78rem; }
+
+.chip {
+  display: inline-block;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font: 600 0.72rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chip.ok { color: var(--ok); border-color: currentColor; }
+.chip.warn { color: var(--warn); border-color: currentColor; }
+.chip.bad { color: var(--danger); border-color: currentColor; }
+.chip.accent { color: var(--accent); border-color: currentColor; }
+
+#status { font-size: 0.85rem; color: var(--muted); margin: 6px 0 0; }
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--panel);
+}
+
+/* Capability panel */
+.provider { border-top: 1px solid var(--line); padding: 10px 0 2px; }
+.provider:first-child { border-top: 0; padding-top: 0; }
+.provider .id { font: 600 0.9rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+.provider .meta { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 0; }
+.provider .reason { color: var(--muted); font-size: 0.8rem; margin: 6px 0 0; }
+
+/* Run panes */
+#panes { display: flex; flex-direction: column; gap: 12px; }
+.pane { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.pane.live { border-color: var(--accent); }
+.pane > .head { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 8px; }
+.pane > .head .label { font-weight: 600; margin-right: 2px; }
+
+.transcript {
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 60px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  max-height: 320px;
+  overflow-y: auto;
+}
+.transcript.snapshot-flash { background: var(--flash); }
+.transcript .caret {
+  display: inline-block;
+  width: 0.5em;
+  background: currentColor;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .transcript .caret { animation: none; }
+  .transcript.snapshot-flash { background: var(--flash); }
+}
+
+.outcome { margin: 8px 0 0; font-size: 0.85rem; }
+.outcome .headline { font-weight: 600; }
+.outcome.completed .headline { color: var(--ok); }
+.outcome.cancelled .headline { color: var(--muted); }
+.outcome.error .headline { color: var(--danger); }
+.outcome ul { margin: 5px 0 0; padding-left: 18px; color: var(--muted); }
+.outcome .assert { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+
+.fault {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px dashed var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+  font-size: 0.82rem;
+}
+
+details.events { margin: 8px 0 0; }
+details.events > summary { cursor: pointer; color: var(--muted); font-size: 0.8rem; }
+table.events {
+  width: 100%;
+  margin: 6px 0 0;
+  border-collapse: collapse;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+table.events th, table.events td { text-align: left; padding: 2px 8px 2px 0; }
+table.events th { color: var(--muted); font-weight: 600; }
+table.events td.num { text-align: right; padding-right: 12px; }
+
+/* Refusal panel */
+.refusal { border: 1px solid var(--danger); border-radius: 10px; padding: 12px; }
+.refusal .headline { font-weight: 600; color: var(--danger); }
+.refusal p { margin: 6px 0 0; font-size: 0.85rem; }
+.refusal table { width: 100%; margin: 10px 0 0; border-collapse: collapse; font-size: 0.82rem; }
+.refusal th, .refusal td { text-align: left; padding: 4px 8px 4px 0; vertical-align: top; }
+.refusal th { color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); }
+.refusal td code { word-break: break-all; }
+
+.empty { color: var(--muted); font-size: 0.85rem; margin: 0; }
+
+.scroll-x { overflow-x: auto; }

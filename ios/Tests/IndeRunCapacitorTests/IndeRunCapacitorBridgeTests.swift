@@ -1,6 +1,7 @@
 import XCTest
 import Foundation
 import IndeRunContracts
+import IndeRunCore
 @testable import IndeRunCapacitorPlugin
 
 final class IndeRunCapacitorBridgeTests: XCTestCase {
@@ -86,6 +87,22 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         XCTAssertEqual(options.allowDirectOpenAIEndpoint, true)
     }
 
+    /// `systemModel` and `onnx` are web-only bootstrap keys, like
+    /// `allowDirectOpenAIEndpoint`. Native registers its own on-device provider, so it must
+    /// ignore them rather than fail to decode the options object that carries them.
+    func testIgnoresTheWebOnlyProviderBootstrapKeys() throws {
+        let json: [String: Any] = [
+            "openAI": ["model": "gpt-5.2", "auth": "none"],
+            "systemModel": ["id": "local.system-model.web", "timeoutMs": 30_000],
+            "onnx": ["modelPackage": ["id": "demo", "format": "onnx"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
+
+        XCTAssertEqual(options.openAI?.model, "gpt-5.2")
+        XCTAssertEqual(options.openAI?.auth, "none")
+    }
+
     // MARK: - encode(error:)
 
     func testEncodesIndeRunErrorRequiredFieldsOnly() throws {
@@ -132,6 +149,223 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         XCTAssertEqual(encoded["retryable"] as? Bool, true)
         XCTAssertEqual(encoded["retryAfterMs"] as? Int, 2_000)
         XCTAssertEqual(encoded["runId"] as? String, "run_abc")
+    }
+
+    /// A routing refusal carries its plan diagnostics on `details`, and since inderun 0.3.0
+    /// it does so on iOS too, not just on the web SDK. The shape is nested — a
+    /// `rejectedProviders` array of objects each carrying its own `reasons` array — and it
+    /// crosses as `[String: JSONAny]`. This is the data a provider-refusal UI reads, so a
+    /// regression would be invisible until a demo showed an empty table.
+    func testEncodesNestedRoutePlanDiagnosticsInDetails() throws {
+        let bridge = IndeRunCapacitorBridge()
+        let error = IndeRunError(
+            details: [
+                "failureCode": JSONAny("CapabilityMismatch"),
+                "rejectedProviders": JSONAny([
+                    [
+                        "providerId": "apple.foundation-models",
+                        "reasons": [["code": "capability_unavailable", "message": "Apple Intelligence unavailable."]]
+                    ],
+                    [
+                        "providerId": "openai",
+                        "reasons": [["code": "privacy_constraint", "message": "local_required forbids cloud."]]
+                    ]
+                ])
+            ],
+            errorClass: .CapabilityMismatch,
+            message: "No eligible provider can stream this request.",
+            providerId: nil,
+            retryable: nil,
+            retryAfterMs: nil,
+            runId: nil,
+            schemaVersion: .the10
+        )
+
+        let encoded = try bridge.encode(error: error)
+        let details = try XCTUnwrap(encoded["details"] as? [String: Any])
+        XCTAssertEqual(details["failureCode"] as? String, "CapabilityMismatch")
+
+        let rejected = try XCTUnwrap(details["rejectedProviders"] as? [[String: Any]])
+        XCTAssertEqual(rejected.count, 2)
+        XCTAssertEqual(rejected[0]["providerId"] as? String, "apple.foundation-models")
+
+        let reasons = try XCTUnwrap(rejected[0]["reasons"] as? [[String: Any]])
+        XCTAssertEqual(reasons[0]["code"] as? String, "capability_unavailable")
+        XCTAssertEqual(
+            (try XCTUnwrap(rejected[1]["reasons"] as? [[String: Any]]))[0]["code"] as? String,
+            "privacy_constraint"
+        )
+    }
+
+    // MARK: - encode(capabilities:)
+
+    private func makeSnapshot(
+        providerId: String,
+        type: ProviderDescriptor.ProviderType,
+        transport: ProviderDescriptor.TransportType,
+        streamingStyle: ProviderDescriptor.StreamingStyle? = nil,
+        streaming: Bool,
+        cancel: ProviderDescriptor.CancelSemantics,
+        limits: ProviderDescriptor.ResourceLimits? = nil,
+        privacy: ProviderDescriptor.PrivacyDescriptor? = nil,
+        capabilities: ProviderDynamicCapabilities
+    ) -> ProviderCapabilitySnapshot {
+        ProviderCapabilitySnapshot(
+            providerId: providerId,
+            descriptor: ProviderDescriptor(
+                id: providerId,
+                type: type,
+                transport: transport,
+                streamingStyle: streamingStyle,
+                supports: ProviderDescriptor.SupportsCapabilities(
+                    run: true,
+                    streaming: streaming,
+                    realtime: false,
+                    tools: false,
+                    reasoningEvents: false,
+                    structuredOutput: false,
+                    multimodal: false
+                ),
+                cancel: cancel,
+                tasks: ["text_to_text"],
+                limits: limits,
+                privacy: privacy
+            ),
+            capabilities: capabilities
+        )
+    }
+
+    func testEncodesCapabilitySnapshotsInsideTheProvidersEnvelope() throws {
+        let bridge = IndeRunCapacitorBridge()
+        let encoded = try bridge.encode(capabilities: [
+            makeSnapshot(
+                providerId: "openai",
+                type: .cloud,
+                transport: .http,
+                streamingStyle: .tokens,
+                streaming: true,
+                cancel: .hard,
+                limits: ProviderDescriptor.ResourceLimits(maxInputTokens: 128_000, maxOutputTokens: 4_096),
+                privacy: ProviderDescriptor.PrivacyDescriptor(dataLeavesDevice: true, regions: ["us"]),
+                capabilities: ProviderDynamicCapabilities(available: true)
+            )
+        ])
+
+        let providers = try XCTUnwrap(encoded["providers"] as? [[String: Any]])
+        XCTAssertEqual(providers.count, 1)
+        XCTAssertEqual(providers[0]["providerId"] as? String, "openai")
+
+        let descriptor = try XCTUnwrap(providers[0]["descriptor"] as? [String: Any])
+        XCTAssertEqual(descriptor["id"] as? String, "openai")
+        XCTAssertEqual(descriptor["type"] as? String, "cloud")
+        XCTAssertEqual(descriptor["transport"] as? String, "http")
+        XCTAssertEqual(descriptor["streamingStyle"] as? String, "tokens")
+        XCTAssertEqual(descriptor["cancel"] as? String, "hard")
+        XCTAssertEqual(descriptor["tasks"] as? [String], ["text_to_text"])
+
+        let supports = try XCTUnwrap(descriptor["supports"] as? [String: Any])
+        XCTAssertEqual(supports["run"] as? Bool, true)
+        XCTAssertEqual(supports["streaming"] as? Bool, true)
+        XCTAssertEqual(supports["multimodal"] as? Bool, false)
+
+        let limits = try XCTUnwrap(descriptor["limits"] as? [String: Any])
+        XCTAssertEqual(limits["maxInputTokens"] as? Int, 128_000)
+        XCTAssertNil(limits["maxImageBytes"])
+
+        let privacy = try XCTUnwrap(descriptor["privacy"] as? [String: Any])
+        XCTAssertEqual(privacy["dataLeavesDevice"] as? Bool, true)
+        XCTAssertEqual(privacy["regions"] as? [String], ["us"])
+    }
+
+    /// `in_process` is the one descriptor constant a future upstream rename to Swift
+    /// casing would silently corrupt on the wire, since the JS union spells it out.
+    func testEncodesTheInProcessTransportWithItsWireSpelling() throws {
+        let bridge = IndeRunCapacitorBridge()
+        let encoded = try bridge.encode(capabilities: [
+            makeSnapshot(
+                providerId: "local.onnx.genai.apple",
+                type: .local,
+                transport: .inProcess,
+                streaming: false,
+                cancel: .soft,
+                capabilities: ProviderDynamicCapabilities(available: false, reason: "No model package.")
+            )
+        ])
+
+        let providers = try XCTUnwrap(encoded["providers"] as? [[String: Any]])
+        let descriptor = try XCTUnwrap(providers[0]["descriptor"] as? [String: Any])
+        XCTAssertEqual(descriptor["transport"] as? String, "in_process")
+        XCTAssertNil(descriptor["streamingStyle"])
+
+        let capabilities = try XCTUnwrap(providers[0]["capabilities"] as? [String: Any])
+        XCTAssertEqual(capabilities["available"] as? Bool, false)
+        XCTAssertEqual(capabilities["reason"] as? String, "No model package.")
+    }
+
+    /// Absence means "inherit the static declaration". A null would be a third state
+    /// consumers do not have, so the unset optionals must not reach the wire at all.
+    func testOmitsUnsetDynamicCapabilityFlagsRatherThanEncodingNull() throws {
+        let bridge = IndeRunCapacitorBridge()
+        let encoded = try bridge.encode(capabilities: [
+            makeSnapshot(
+                providerId: "apple.foundation-models",
+                type: .local,
+                transport: .systemService,
+                streamingStyle: .snapshots,
+                streaming: true,
+                cancel: .soft,
+                capabilities: ProviderDynamicCapabilities(available: true)
+            )
+        ])
+
+        let providers = try XCTUnwrap(encoded["providers"] as? [[String: Any]])
+        let descriptor = try XCTUnwrap(providers[0]["descriptor"] as? [String: Any])
+        XCTAssertEqual(descriptor["transport"] as? String, "system_service")
+        XCTAssertEqual(descriptor["streamingStyle"] as? String, "snapshots")
+        XCTAssertNil(descriptor["limits"])
+        XCTAssertNil(descriptor["privacy"])
+
+        let capabilities = try XCTUnwrap(providers[0]["capabilities"] as? [String: Any])
+        XCTAssertNil(capabilities["streamingAvailable"])
+        XCTAssertNil(capabilities["streamingUnavailableReason"])
+        XCTAssertNil(capabilities["cancellationAvailable"])
+        XCTAssertNil(capabilities["reason"])
+    }
+
+    func testEncodesStreamingTakenAwayAtRuntime() throws {
+        let bridge = IndeRunCapacitorBridge()
+        let encoded = try bridge.encode(capabilities: [
+            makeSnapshot(
+                providerId: "openai",
+                type: .cloud,
+                transport: .http,
+                streamingStyle: .tokens,
+                streaming: true,
+                cancel: .hard,
+                capabilities: ProviderDynamicCapabilities(
+                    available: true,
+                    streamingAvailable: false,
+                    streamingUnavailableReason: "Host has no streaming HTTP client.",
+                    cancellationAvailable: true
+                )
+            )
+        ])
+
+        let providers = try XCTUnwrap(encoded["providers"] as? [[String: Any]])
+        let capabilities = try XCTUnwrap(providers[0]["capabilities"] as? [String: Any])
+        XCTAssertEqual(capabilities["streamingAvailable"] as? Bool, false)
+        XCTAssertEqual(
+            capabilities["streamingUnavailableReason"] as? String,
+            "Host has no streaming HTTP client."
+        )
+        XCTAssertEqual(capabilities["cancellationAvailable"] as? Bool, true)
+    }
+
+    func testEncodesAnEmptyRegistryAsAnEmptyProvidersArray() throws {
+        let bridge = IndeRunCapacitorBridge()
+        let encoded = try bridge.encode(capabilities: [])
+
+        XCTAssertEqual(try XCTUnwrap(encoded["providers"] as? [[String: Any]]).count, 0)
     }
 
     // MARK: - mapAuthMode

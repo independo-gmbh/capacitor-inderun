@@ -10,7 +10,13 @@ buildscript {
 }
 
 plugins {
-    id("com.android.library") version "9.3.1"
+    // No version here on purpose. When a Capacitor app includes this module, AGP is already
+    // on the app's classpath and a versioned request fails with "the plugin is already on the
+    // classpath with an unknown version, so compatibility cannot be checked" — i.e. the plugin
+    // could not be consumed at all. The version for a standalone build of this directory is
+    // declared in settings.gradle's pluginManagement instead, which a consuming app's own
+    // settings file replaces.
+    id("com.android.library")
 }
 
 android {
@@ -37,11 +43,11 @@ dependencies {
     testImplementation("com.capacitorjs:core:8.0.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.core:core-ktx:1.17.0")
-    implementation("app.independo.inderun:inderun-contracts:0.3.0-dev.14")
-    implementation("app.independo.inderun:inderun-core:0.3.0-dev.14")
-    implementation("app.independo.inderun:inderun-kotlin:0.3.0-dev.14")
-    implementation("app.independo.inderun:inderun-mlkit-providers:0.3.0-dev.14")
-    implementation("app.independo.inderun:inderun-openai-providers:0.3.0-dev.14")
+    implementation("app.independo.inderun:inderun-contracts:0.3.0")
+    implementation("app.independo.inderun:inderun-core:0.3.0")
+    implementation("app.independo.inderun:inderun-kotlin:0.3.0")
+    implementation("app.independo.inderun:inderun-mlkit-providers:0.3.0")
+    implementation("app.independo.inderun:inderun-openai-providers:0.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     testImplementation("junit:junit:4.13.2")

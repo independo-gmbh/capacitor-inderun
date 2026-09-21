@@ -142,6 +142,29 @@ class IndeRunSerializerTest {
 
     // --- encodeError ---
 
+    /**
+     * `systemModel` and `onnx` are web-only bootstrap keys, like
+     * `allowDirectOpenAIEndpoint`. Android registers its own on-device provider, so it must
+     * ignore them rather than fail on the options object that carries them.
+     */
+    @Test
+    fun `parseConfigureOptions ignores the web-only provider bootstrap keys`() {
+        val options = IndeRunSerializer.parseConfigureOptions(
+            JSONObject(
+                """
+                {
+                  "openAI": { "model": "gpt-5.2", "auth": "none" },
+                  "systemModel": { "id": "local.system-model.web", "timeoutMs": 30000 },
+                  "onnx": { "modelPackage": { "id": "demo", "format": "onnx" } }
+                }
+                """.trimIndent()
+            )
+        )
+
+        assertEquals("gpt-5.2", options.openAI?.model)
+        assertEquals("none", options.openAI?.auth)
+    }
+
     @Test
     fun `encodeError produces correct shape with required fields only`() {
         val encoded = IndeRunSerializer.encodeError(
@@ -177,4 +200,60 @@ class IndeRunSerializerTest {
         assertEquals(2000L, encoded.getLong("retryAfterMs"))
         assertEquals("run_abc", encoded.getString("runId"))
     }
+
+    /**
+     * A routing refusal carries its plan diagnostics on the error's `details`, and since
+     * inderun 0.3.0 it does so on iOS and Android too, not just on the web SDK. The shape
+     * is nested — a `rejectedProviders` array of objects, each with its own `reasons`
+     * array — and `encodeError` hands the whole map to `JSONObject(Map)`, which deep-wraps
+     * via `wrap()`. Nothing asserted that before; this is the data a provider-refusal UI
+     * actually reads, so a regression here would be invisible until a demo showed an empty
+     * table.
+     */
+    @Test
+    fun `encodeError preserves nested route-plan diagnostics in details`() {
+        val encoded = IndeRunSerializer.encodeError(
+            IndeRunError(
+                errorClass = IndeRunErrorClass.CapabilityMismatch,
+                message = "No eligible provider can stream this request.",
+                details = mapOf(
+                    "failureCode" to "CapabilityMismatch",
+                    "rejectedProviders" to listOf(
+                        mapOf(
+                            "providerId" to "android.mlkit.genai",
+                            "reasons" to listOf(
+                                mapOf(
+                                    "code" to "streaming_not_supported",
+                                    "message" to "Provider does not declare streaming."
+                                )
+                            )
+                        ),
+                        mapOf(
+                            "providerId" to "openai",
+                            "reasons" to listOf(
+                                mapOf("code" to "privacy_constraint", "message" to "local_required forbids cloud.")
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val details = encoded.getJSONObject("details")
+        assertEquals("CapabilityMismatch", details.getString("failureCode"))
+
+        val rejected = details.getJSONArray("rejectedProviders")
+        assertEquals(2, rejected.length())
+        assertEquals("android.mlkit.genai", rejected.getJSONObject(0).getString("providerId"))
+        assertEquals(
+            "streaming_not_supported",
+            rejected.getJSONObject(0).getJSONArray("reasons").getJSONObject(0).getString("code")
+        )
+        assertEquals("openai", rejected.getJSONObject(1).getString("providerId"))
+        assertEquals(
+            "privacy_constraint",
+            rejected.getJSONObject(1).getJSONArray("reasons").getJSONObject(0).getString("code")
+        )
+    }
+
 }
