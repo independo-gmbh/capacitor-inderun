@@ -33,6 +33,11 @@
 
 * { box-sizing: border-box; }
 
+/* Several rules below set `display` on a class, which outranks the UA's [hidden] rule — so
+   toggling `el.hidden` would silently do nothing (the caret kept blinking after a run ended;
+   the web-only provider toggle stayed visible on a device). Say it once, here. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: env(safe-area-inset-top) 16px 32px;
@@ -173,9 +178,6 @@ button:disabled { opacity: 0.45; }
   background: currentColor;
   animation: blink 1s steps(2, start) infinite;
 }
-/* A class selector outranks the UA's [hidden] rule, so hiding the caret when the run
-   ends needs saying explicitly — otherwise it blinks on forever after the terminal. */
-.transcript .caret[hidden] { display: none; }
 @keyframes blink { to { visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) {
   .transcript .caret { animation: none; }

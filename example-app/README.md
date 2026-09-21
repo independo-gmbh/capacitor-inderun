@@ -37,6 +37,34 @@ pnpm exec cap add ios        # first time only
 pnpm exec cap add android    # first time only
 ```
 
+### After `cap add`
+
+The generated native projects do not come configured for this plugin's SDK requirements, and
+because `ios/` and `android/` are gitignored, every fresh clone has to redo these. The full
+list with the error each one prevents is in the
+[root README's Host Project Requirements](../README.md#host-project-requirements); concretely,
+here:
+
+```sh
+# android/variables.gradle
+compileSdkVersion = 37      # was 36
+minSdkVersion = 26          # was 24
+
+# android/build.gradle — bump AGP, and add KGP to the buildscript classpath
+classpath 'com.android.tools.build:gradle:9.3.1'
+classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10'
+
+# android/gradle/wrapper/gradle-wrapper.properties — AGP 9 needs Gradle 9
+distributionUrl=https\://services.gradle.org/distributions/gradle-9.7.0-all.zip
+
+# android/app/build.gradle — AGP 9 rejects the non-optimize default
+getDefaultProguardFile('proguard-android-optimize.txt')
+```
+
+For iOS, set `IPHONEOS_DEPLOYMENT_TARGET` to `16.0` in `ios/App/App.xcodeproj` **before**
+running `cap sync ios` — the CLI reads it to generate `CapApp-SPM/Package.swift`, so syncing
+first leaves a manifest below this package's floor.
+
 `--ignore-workspace` is required. The repository root is a single pnpm package with no
 `packages:` key, so a plain `pnpm install` here finds the parent lockfile and silently does
 nothing — no `node_modules`, no error. The flag makes pnpm treat this directory as its own
