@@ -266,10 +266,26 @@ final class IndeRunCapacitorBridge {
     private func encodeObject<T: Encodable>(_ value: T) throws -> JSObject {
         let data = try JSONEncoder().encode(value)
         let object = try JSONSerialization.jsonObject(with: data, options: [])
+
+        #if canImport(Capacitor)
+        // Capacitor's JSObject is [String: any JSValue], and a plain `as?` cast cannot
+        // produce one: JSONSerialization hands back NSDictionary/NSArray values, which do
+        // not conform to JSValue, so anything with a nested object or array — a TaskResult's
+        // `output`, a stream event's `payload`, the providers array — failed the cast and
+        // surfaced as "Capacitor bridge failed to encode a JSON object". JSTypes coerces the
+        // tree recursively, which is what the cast was standing in for.
+        guard let dictionary = object as? [AnyHashable: Any],
+              let coerced = JSTypes.coerceDictionaryToJSObject(dictionary) else {
+            throw createInternal(message: "Capacitor bridge failed to encode a JSON object.")
+        }
+        return coerced
+        #else
+        // Standalone builds alias JSObject to [String: Any], where the cast is exact.
         guard let dictionary = object as? JSObject else {
             throw createInternal(message: "Capacitor bridge failed to encode a JSON object.")
         }
         return dictionary
+        #endif
     }
 
     func mapAuthMode(_ value: String?) -> OpenAIAuthMode {
