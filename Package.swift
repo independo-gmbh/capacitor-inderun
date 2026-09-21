@@ -16,6 +16,16 @@ let package = Package(
         .library(
             name: "IndeRunCapacitor",
             targets: ["IndeRunCapacitorPlugin"]
+        ),
+        // The Capacitor CLI derives a product name from the npm package name
+        // (`@independo/capacitor-inderun` -> `IndependoCapacitorInderun`) and writes exactly
+        // that into the app's generated CapApp-SPM manifest. Without a product under this
+        // name, `cap add ios` produces a project that cannot resolve its dependencies at all.
+        // Kept alongside the original name rather than replacing it, so anything already
+        // depending on `IndeRunCapacitor` by URL keeps resolving.
+        .library(
+            name: "IndependoCapacitorInderun",
+            targets: ["IndeRunCapacitorPlugin"]
         )
     ],
     dependencies: [

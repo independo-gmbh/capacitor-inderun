@@ -52,6 +52,44 @@ itself. On-device execution needs more than the floor: Apple Foundation Models r
 Intelligence–capable device on iOS 26+, and ML Kit GenAI requires AICore / Gemini Nano support.
 Availability is checked at runtime and the cloud provider serves the request when it is missing.
 
+## Host Project Requirements
+
+The IndeRun SDKs this bridge wraps are newer than a freshly generated Capacitor app's
+defaults, so `cap add` alone is not enough. Each of these is a hard requirement — the
+corresponding build failure is named so it is searchable:
+
+**Android** (`android/variables.gradle` and `android/build.gradle` in your app):
+
+| Setting | Value | Failure if unset |
+|---|---|---|
+| `compileSdkVersion` | `37` | *"requires libraries and applications that depend on it to compile against version 37 or later"* |
+| `minSdkVersion` | `26` | manifest merger conflict |
+| Android Gradle Plugin | `9.1.0`+ (Gradle 9.x) | *"requires Android Gradle plugin 9.1.0 or higher"* |
+| `org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10` on the app's `buildscript` classpath | — | *"Module was compiled with an incompatible version of Kotlin … metadata is 2.4.0, expected version is 2.2.0"* |
+
+The Kotlin one is the surprising entry: the `inderun-*` artifacts carry Kotlin 2.4.x
+metadata, which the Kotlin plugin AGP brings by default cannot read. The plugin's own build
+hoists a newer KGP for its standalone build, but a consuming app resolves KGP from its own
+buildscript classpath, so the app has to add it too:
+
+```groovy
+// android/build.gradle
+buildscript {
+    dependencies {
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10'
+    }
+}
+```
+
+AGP 9 also rejects `getDefaultProguardFile('proguard-android.txt')`; switch to
+`proguard-android-optimize.txt`.
+
+**iOS**: set `IPHONEOS_DEPLOYMENT_TARGET` to `16.0` in your Xcode project **before**
+`npx cap sync ios`. The Capacitor CLI reads that value to generate `CapApp-SPM/Package.swift`,
+so syncing with the default leaves a manifest pinned below this package's floor and the build
+fails with *"requires minimum platform version 16.0 for the iOS platform, but this target
+supports 15.0"*.
+
 ## Supported IndeRun Version
 
 This release tracks **IndeRun 0.3.0** on all three platforms:

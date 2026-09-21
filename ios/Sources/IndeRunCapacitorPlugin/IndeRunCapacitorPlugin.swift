@@ -26,7 +26,7 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func configure(_ call: CAPPluginCall) {
         do {
-            try implementation.configure(options: call.options)
+            try implementation.configure(options: call.jsObjectRepresentation)
             call.resolve()
         } catch let error as IndeRunException {
             let contractError = error.toContractError()
@@ -43,7 +43,7 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func run(_ call: CAPPluginCall) {
         Task {
             do {
-                let result = try await implementation.run(requestObject: call.options)
+                let result = try await implementation.run(requestObject: call.jsObjectRepresentation)
                 call.resolve(result)
             } catch let error as IndeRunException {
                 let contractError = error.toContractError()
@@ -90,7 +90,7 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
             guard let self else { return }
             do {
                 let handle = try await self.implementation.startStream(
-                    options: call.options,
+                    options: call.jsObjectRepresentation,
                     onEvent: { [weak self] streamId, event in
                         self?.notifyListeners(
                             "indeRunStreamEvent",
@@ -124,7 +124,7 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
     /// is a no-op by contract, not an error.
     @objc func cancelStream(_ call: CAPPluginCall) {
         do {
-            try implementation.cancelStream(options: call.options)
+            try implementation.cancelStream(options: call.jsObjectRepresentation)
             call.resolve()
         } catch let error as IndeRunException {
             let contractError = error.toContractError()

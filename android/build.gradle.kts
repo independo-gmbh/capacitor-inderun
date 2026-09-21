@@ -10,7 +10,13 @@ buildscript {
 }
 
 plugins {
-    id("com.android.library") version "9.3.1"
+    // No version here on purpose. When a Capacitor app includes this module, AGP is already
+    // on the app's classpath and a versioned request fails with "the plugin is already on the
+    // classpath with an unknown version, so compatibility cannot be checked" — i.e. the plugin
+    // could not be consumed at all. The version for a standalone build of this directory is
+    // declared in settings.gradle's pluginManagement instead, which a consuming app's own
+    // settings file replaces.
+    id("com.android.library")
 }
 
 android {
