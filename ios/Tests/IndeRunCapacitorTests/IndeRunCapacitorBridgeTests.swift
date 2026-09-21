@@ -87,6 +87,22 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         XCTAssertEqual(options.allowDirectOpenAIEndpoint, true)
     }
 
+    /// `systemModel` and `onnx` are web-only bootstrap keys, like
+    /// `allowDirectOpenAIEndpoint`. Native registers its own on-device provider, so it must
+    /// ignore them rather than fail to decode the options object that carries them.
+    func testIgnoresTheWebOnlyProviderBootstrapKeys() throws {
+        let json: [String: Any] = [
+            "openAI": ["model": "gpt-5.2", "auth": "none"],
+            "systemModel": ["id": "local.system-model.web", "timeoutMs": 30_000],
+            "onnx": ["modelPackage": ["id": "demo", "format": "onnx"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
+
+        XCTAssertEqual(options.openAI?.model, "gpt-5.2")
+        XCTAssertEqual(options.openAI?.auth, "none")
+    }
+
     // MARK: - encode(error:)
 
     func testEncodesIndeRunErrorRequiredFieldsOnly() throws {

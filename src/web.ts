@@ -23,9 +23,12 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
   private readonly pendingCancels = new Map<string, string | undefined>();
 
   async configure(options?: ConfigureOptions): Promise<void> {
-    if (!options?.openAI) {
+    // The web SDK requires at least one provider, not specifically the cloud one. Held
+    // here as well as there so the failure is an `Unavailable` contract error rather than
+    // a raw SDK throw, which is what the facade's callers expect.
+    if (!options?.openAI && !options?.systemModel && !options?.onnx) {
       throw createUnavailable(
-        "Capacitor web execution requires OpenAI provider registration. Configure with openAI bootstrap options before calling run(request)."
+        "Capacitor web execution requires at least one provider registration. Configure with openAI, systemModel and/or onnx bootstrap options before calling run(request)."
       ).toContractError();
     }
 
@@ -34,10 +37,17 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
       // then fails at the type level instead of silently dropping a field. This is
       // deliberately the *outbound* shape only — `ConfigureOptions` stays a narrower,
       // JSON-serializable subset, because it has to cross the native bridge hop.
-      const webOptions: CreateIndeRunWebOptions = {
-        openAI: compactOpenAIOptions(options)
-      };
+      const webOptions: CreateIndeRunWebOptions = {};
 
+      if (options.openAI !== undefined) {
+        webOptions.openAI = compactOpenAIOptions(options.openAI);
+      }
+      if (options.systemModel !== undefined) {
+        webOptions.systemModel = compactSystemModelOptions(options.systemModel);
+      }
+      if (options.onnx !== undefined) {
+        webOptions.onnx = compactOnnxOptions(options.onnx);
+      }
       if (options.allowDirectOpenAIEndpoint !== undefined) {
         webOptions.allowDirectOpenAIEndpoint = options.allowDirectOpenAIEndpoint;
       }
@@ -168,8 +178,7 @@ type WebOpenAIOptions = NonNullable<CreateIndeRunWebOptions["openAI"]>;
  * all optional, and the bridge has no reason to expose provider-tuning knobs it cannot
  * also offer on native.
  */
-function compactOpenAIOptions(options: ConfigureOptions): WebOpenAIOptions {
-  const openAI = options.openAI!;
+function compactOpenAIOptions(openAI: NonNullable<ConfigureOptions["openAI"]>): WebOpenAIOptions {
   const result: WebOpenAIOptions = {
     model: openAI.model
   };
@@ -185,6 +194,39 @@ function compactOpenAIOptions(options: ConfigureOptions): WebOpenAIOptions {
   }
   if (openAI.timeoutMs !== undefined) {
     result.timeoutMs = openAI.timeoutMs;
+  }
+
+  return result;
+}
+
+type WebSystemModelOptions = NonNullable<CreateIndeRunWebOptions["systemModel"]>;
+type WebOnnxOptions = NonNullable<CreateIndeRunWebOptions["onnx"]>;
+
+function compactSystemModelOptions(
+  systemModel: NonNullable<ConfigureOptions["systemModel"]>
+): WebSystemModelOptions {
+  const result: WebSystemModelOptions = {};
+
+  if (systemModel.id !== undefined) {
+    result.id = systemModel.id;
+  }
+  if (systemModel.timeoutMs !== undefined) {
+    result.timeoutMs = systemModel.timeoutMs;
+  }
+
+  return result;
+}
+
+function compactOnnxOptions(onnx: NonNullable<ConfigureOptions["onnx"]>): WebOnnxOptions {
+  const result: WebOnnxOptions = {
+    modelPackage: onnx.modelPackage
+  };
+
+  if (onnx.id !== undefined) {
+    result.id = onnx.id;
+  }
+  if (onnx.timeoutMs !== undefined) {
+    result.timeoutMs = onnx.timeoutMs;
   }
 
   return result;

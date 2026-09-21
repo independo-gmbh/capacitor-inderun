@@ -5,6 +5,7 @@ import type {
   CheckCapabilitiesResult,
   ConfigureOptions,
   IndeRunCapacitorPlugin as IndeRunCapacitorPluginContract,
+  OnnxProviderBootstrapOptions,
   OpenAIProviderBootstrapOptions,
   ProviderCapabilitySnapshot,
   ProviderDescriptor,
@@ -12,7 +13,8 @@ import type {
   StartStreamOptions,
   StreamErrorNotification,
   StreamEventNotification,
-  StreamRun
+  StreamRun,
+  SystemModelProviderBootstrapOptions
 } from "./definitions.js";
 import { normalizePluginError } from "./errors.js";
 import { startCapacitorStream } from "./streaming.js";
@@ -130,6 +132,7 @@ export type {
   CheckCapabilitiesResult,
   ConfigureOptions,
   IndeRunCapacitorPluginContract as IndeRunCapacitorPlugin,
+  OnnxProviderBootstrapOptions,
   OpenAIProviderBootstrapOptions,
   ProviderCapabilitySnapshot,
   ProviderDescriptor,
@@ -138,6 +141,7 @@ export type {
   StreamErrorNotification,
   StreamEventNotification,
   StreamRun,
+  SystemModelProviderBootstrapOptions,
   TaskRequest,
   TaskResult
 };

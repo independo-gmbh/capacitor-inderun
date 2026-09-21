@@ -142,6 +142,29 @@ class IndeRunSerializerTest {
 
     // --- encodeError ---
 
+    /**
+     * `systemModel` and `onnx` are web-only bootstrap keys, like
+     * `allowDirectOpenAIEndpoint`. Android registers its own on-device provider, so it must
+     * ignore them rather than fail on the options object that carries them.
+     */
+    @Test
+    fun `parseConfigureOptions ignores the web-only provider bootstrap keys`() {
+        val options = IndeRunSerializer.parseConfigureOptions(
+            JSONObject(
+                """
+                {
+                  "openAI": { "model": "gpt-5.2", "auth": "none" },
+                  "systemModel": { "id": "local.system-model.web", "timeoutMs": 30000 },
+                  "onnx": { "modelPackage": { "id": "demo", "format": "onnx" } }
+                }
+                """.trimIndent()
+            )
+        )
+
+        assertEquals("gpt-5.2", options.openAI?.model)
+        assertEquals("none", options.openAI?.auth)
+    }
+
     @Test
     fun `encodeError produces correct shape with required fields only`() {
         val encoded = IndeRunSerializer.encodeError(

@@ -147,10 +147,23 @@ things are specific to reaching them through a bridge:
 > The two listener event names are **public contract**. Native emits exactly these, and an
 > app may attach its own listener to them; renaming one is a breaking change.
 
-The `IndeRunCapacitorPlugin`, `ConfigureOptions`, and `OpenAIProviderBootstrapOptions`
-contracts — including the `openAI` bootstrap config and the web-only
-`allowDirectOpenAIEndpoint` flag — are defined and documented in
-`src/definitions.ts`.
+The `IndeRunCapacitorPlugin` and `ConfigureOptions` contracts — including the `openAI`,
+`systemModel` and `onnx` bootstrap configs and the `allowDirectOpenAIEndpoint` flag — are
+defined and documented in `src/definitions.ts`.
+
+`systemModel`, `onnx` and `allowDirectOpenAIEndpoint` are **web-only** and ignored on iOS
+and Android, which register their own on-device provider from `configure()` regardless.
+`systemModel` registers the browser-managed on-device provider (Chrome's Prompt API) and is
+what makes `constraints.privacy = "local_required"` routable in a browser. Both on-device
+web providers are Mode 1 only.
+
+`onnx` carries two caveats. It needs the consumer to install the optional
+`@huggingface/transformers` peer dependency — this bridge does not declare it — and to
+supply real model weights, because the web SDK's `runtime` injection seam is a function and
+so cannot cross a JSON bridge hop: only the default Transformers.js runtime is reachable
+through `configure()`, never the fixture runtime the upstream demos use offline. Register it
+only when the weights are there; a provider that cannot load turns a clean routing refusal
+into a provider error.
 
 Two asymmetries in the low-level surface, both hidden by the ergonomic API:
 

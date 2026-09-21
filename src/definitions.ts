@@ -1,6 +1,7 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import type {
   IndeRunError,
+  ModelPackage,
   StreamEvent,
   StreamRunHandle,
   TaskRequest,
@@ -15,8 +16,52 @@ export interface OpenAIProviderBootstrapOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Bootstrap options for the browser-managed on-device provider (Chrome's Prompt API).
+ *
+ * **Web only**, and ignored on iOS and Android, which register their own on-device
+ * providers — Apple Foundation Models and ML Kit GenAI — from `configure()` regardless.
+ *
+ * The browser owns model availability, download and execution, so there is nothing to
+ * configure: registering it is the whole point, and it is what makes
+ * `constraints.privacy = "local_required"` routable in a browser. Mode 1 only — this
+ * provider does not stream, so a `local_required` *stream* on the web is still refused at
+ * routing time.
+ *
+ * The web SDK's `runtime` injection seam is deliberately not exposed: it is a function,
+ * and `configure()` has to survive a JSON bridge hop on native.
+ */
+export interface SystemModelProviderBootstrapOptions {
+  id?: string;
+  timeoutMs?: number;
+}
+
+/**
+ * Bootstrap options for the Web ONNX Runtime provider, for a developer-supplied local
+ * model.
+ *
+ * **Web only**, like `systemModel`, and Mode 1 only.
+ *
+ * Two caveats worth knowing before reaching for this. The consumer has to install the
+ * optional `@huggingface/transformers` peer dependency — this bridge does not declare it —
+ * and supply real model weights, because the web SDK's `runtime` seam is a function and so
+ * cannot cross the JSON bridge hop: only the default Transformers.js runtime is reachable
+ * from here, never the fixture runtime the upstream demos use offline. A registered
+ * provider that cannot load turns a clean routing refusal into a provider error, so
+ * register it only when the weights are actually there.
+ */
+export interface OnnxProviderBootstrapOptions {
+  id?: string;
+  modelPackage: ModelPackage;
+  timeoutMs?: number;
+}
+
 export interface ConfigureOptions {
   openAI?: OpenAIProviderBootstrapOptions;
+  /** Web only; native registers its own on-device provider. */
+  systemModel?: SystemModelProviderBootstrapOptions;
+  /** Web only; native registers its own on-device provider. */
+  onnx?: OnnxProviderBootstrapOptions;
   allowDirectOpenAIEndpoint?: boolean;
 }
 

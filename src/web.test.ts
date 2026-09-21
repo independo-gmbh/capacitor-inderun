@@ -81,6 +81,43 @@ describe("IndeRunWeb", () => {
     });
   });
 
+  it("still rejects an options object that registers no provider at all", async () => {
+    const plugin = new IndeRunWeb();
+
+    await expect(plugin.configure({})).rejects.toMatchObject({
+      schemaVersion: "1.0",
+      errorClass: "Unavailable"
+    });
+    expect(createIndeRunWebMock).not.toHaveBeenCalled();
+  });
+
+  it("registers the browser system-model provider on its own, without a cloud provider", async () => {
+    createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+    const plugin = new IndeRunWeb();
+    await expect(plugin.configure({ systemModel: {} })).resolves.toBeUndefined();
+
+    expect(createIndeRunWebMock).toHaveBeenCalledOnce();
+    expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({ systemModel: {} });
+  });
+
+  it("forwards every configured web provider and omits the ones left out", async () => {
+    createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+    const plugin = new IndeRunWeb();
+    await plugin.configure({
+      openAI: { model: "gpt-5.2", auth: "none" },
+      systemModel: { id: "local.system-model.web", timeoutMs: 30_000 },
+      onnx: { modelPackage: { id: "demo", format: "onnx" } }
+    });
+
+    expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({
+      openAI: { model: "gpt-5.2", auth: "none" },
+      systemModel: { id: "local.system-model.web", timeoutMs: 30_000 },
+      onnx: { modelPackage: { id: "demo", format: "onnx" } }
+    });
+  });
+
   it("returns a normalized contract error when run() is called before configure()", async () => {
     const plugin = new IndeRunWeb();
 
