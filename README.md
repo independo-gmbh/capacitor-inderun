@@ -52,6 +52,25 @@ itself. On-device execution needs more than the floor: Apple Foundation Models r
 Intelligence–capable device on iOS 26+, and ML Kit GenAI requires AICore / Gemini Nano support.
 Availability is checked at runtime and the cloud provider serves the request when it is missing.
 
+## Supported IndeRun Version
+
+This release tracks **IndeRun 0.3.0** on all three platforms:
+
+| Platform | Artifact | Constraint |
+|----------|----------|------------|
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.3.0` (exact) |
+| iOS      | `inderun` SwiftPM package | `>=0.3.0 <0.4.0` |
+| Android  | `app.independo.inderun:inderun-*` | `0.3.0` (exact) |
+
+The npm and Gradle pins are exact and all three are bumped together — a partial bump is how the
+platforms drift apart. The SwiftPM constraint is ranged rather than exact so an app that also depends
+on `inderun` directly can still unify its package graph; it stops at the next minor because that is
+where an 0.x SDK's breaking changes live.
+
+This package versions **independently** of the IndeRun monorepo under plain semver — the numbers are
+unrelated, and this bridge's own version says nothing about which IndeRun release it wraps. Read that
+off the table above.
+
 ## Usage
 
 ```ts
@@ -138,7 +157,10 @@ also carries the bridge-local correlation id. `stream()` hides this.
 
 ## Platform Notes
 
-- Web requires `openAI` registration because the current web SDK only has the OpenAI-compatible provider.
+- Web requires at least one provider to be registered from `configure()`. The web SDK ships an
+  OpenAI-compatible provider, a Web ONNX Runtime provider and a browser system-model provider, but
+  only the OpenAI-compatible one declares streaming support — so a `local_required` **stream** in a
+  browser is refused at routing time, while a `local_required` **run** can be served on-device.
 - iOS always registers the Apple on-device provider and optionally registers OpenAI when configured.
 - Android always registers the ML Kit on-device provider and optionally registers OpenAI when configured.
 - Keep credentials behind `authContextRef`. That keeps a secret out of the request payload and out
