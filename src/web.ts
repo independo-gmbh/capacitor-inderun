@@ -10,7 +10,7 @@ import type {
   StreamRun
 } from "./definitions.js";
 import type { TaskRequest } from "@independo/inderun-contracts";
-import type { IndeRun } from "@independo/inderun-web";
+import type { CreateIndeRunWebOptions, IndeRun } from "@independo/inderun-web";
 import { STREAM_ERROR_NAME, STREAM_EVENT_NAME } from "./streaming.js";
 
 export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
@@ -30,16 +30,11 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
     }
 
     try {
-      const webOptions: {
-        openAI: {
-          model: string;
-          endpointUrl?: string;
-          auth?: "authContextRef" | "none";
-          authContextRef?: string;
-          timeoutMs?: number;
-        };
-        allowDirectOpenAIEndpoint?: boolean;
-      } = {
+      // The SDK's own option type, not a hand-written copy of it: an upstream rename
+      // then fails at the type level instead of silently dropping a field. This is
+      // deliberately the *outbound* shape only — `ConfigureOptions` stays a narrower,
+      // JSON-serializable subset, because it has to cross the native bridge hop.
+      const webOptions: CreateIndeRunWebOptions = {
         openAI: compactOpenAIOptions(options)
       };
 
@@ -161,21 +156,21 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
   }
 }
 
-function compactOpenAIOptions(options: ConfigureOptions): {
-  model: string;
-  endpointUrl?: string;
-  auth?: "authContextRef" | "none";
-  authContextRef?: string;
-  timeoutMs?: number;
-} {
+type WebOpenAIOptions = NonNullable<CreateIndeRunWebOptions["openAI"]>;
+
+/**
+ * Assigns only the fields the caller actually set. `exactOptionalPropertyTypes` makes
+ * this incremental style mandatory rather than cosmetic: assigning `undefined` to an
+ * optional property is an error, and an explicit `undefined` on the wire is not the same
+ * thing as an absent key to the provider that reads it.
+ *
+ * `id`, `healthCheckTimeoutMs` and `healthCheckCacheMs` are deliberately not bridged —
+ * all optional, and the bridge has no reason to expose provider-tuning knobs it cannot
+ * also offer on native.
+ */
+function compactOpenAIOptions(options: ConfigureOptions): WebOpenAIOptions {
   const openAI = options.openAI!;
-  const result: {
-    model: string;
-    endpointUrl?: string;
-    auth?: "authContextRef" | "none";
-    authContextRef?: string;
-    timeoutMs?: number;
-  } = {
+  const result: WebOpenAIOptions = {
     model: openAI.model
   };
 
