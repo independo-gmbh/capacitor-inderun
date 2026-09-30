@@ -74,9 +74,21 @@
   the monorepo's npm packages; that was already untrue in practice (this package reached 1.0.0
   against `inderun` 0.2.2) and pinning two independently released artifacts to one number made
   neither version mean anything. It has been dropped rather than quietly broken again.
-- State the supported `inderun` range in `README.md` instead, and bump the dependency pins in
-  `package.json`, `Package.swift`, and `android/build.gradle.kts` together — a partial bump is how
-  the three platforms drift apart.
-- While the bridge tracks an `inderun` prerelease, pin it exactly on every platform. In particular
-  SwiftPM's `from:`/`.upToNextMajor` range operators **exclude** prerelease versions, so `from:` on a
-  `-dev.N` silently resolves the older stable and the build fails somewhere far from the cause.
+- State the supported `inderun` version in `README.md` instead, and bump every platform's pin in one
+  go — a partial bump is how the three platforms drift apart.
+- Pin `inderun` **exactly** in `package.json` and `android/build.gradle.kts`, and constrain it in
+  `Package.swift` with `.upToNextMinor(from:)`. The asymmetry is deliberate: the npm and Gradle pins
+  are this package's own resolution, while the SwiftPM constraint is a *consumer's* — an app that also
+  depends on `inderun` directly cannot unify its graph against an `exact:` pin. `.upToNextMinor`
+  rather than `from:` because `from:` on a 0.x means `<1.0.0`, which would let SwiftPM float across a
+  minor (where an 0.x SDK's breaking changes live) while the other two stay pinned, and invisibly, as
+  `Package.resolved` is gitignored.
+- Bumping is a five-file edit — `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`'s
+  `minimumReleaseAgeExclude`, `Package.swift`, `android/build.gradle.kts` — plus the version table in
+  `README.md`. Miss the workspace allowlist and the install is age-blocked. Note `pnpm install` alone
+  may leave the lockfile's importer entry on the old version while updating its specifier; check it,
+  and use `pnpm up <pkg>@<version>` when it does.
+- While the bridge tracks an `inderun` **prerelease**, switch `Package.swift` back to `exact:`.
+  SwiftPM's `from:` / `.upToNextMinor` / `.upToNextMajor` range operators **exclude** prerelease
+  versions, so a range on a `-dev.N` silently resolves the older stable and the build fails somewhere
+  far from the cause.

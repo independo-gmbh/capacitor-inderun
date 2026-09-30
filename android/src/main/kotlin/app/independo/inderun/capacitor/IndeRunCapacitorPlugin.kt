@@ -88,6 +88,41 @@ class IndeRunCapacitorPlugin : Plugin() {
     }
 
     /**
+     * Reports every registered provider's static declaration and live availability without
+     * executing a task. Availability changes between calls — a local model can unload,
+     * cloud credentials can expire — so callers must not cache it across a run.
+     */
+    @PluginMethod
+    fun checkCapabilities(call: PluginCall) {
+        scope.launch {
+            try {
+                val registry = configuredRegistry
+                    ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling checkCapabilities()."))
+                // IndeRun is stateless; new per call is intentional — registry is cached after configure().
+                val snapshots = IndeRun.initialize(context.applicationContext, registry).checkCapabilities()
+                call.resolve(IndeRunSerializer.encodeCapabilitySnapshots(snapshots))
+            } catch (error: IndeRunException) {
+                val contractError = error.toContractError()
+                call.reject(
+                    contractError.message,
+                    contractError.errorClass.rawValue,
+                    null,
+                    runCatching { IndeRunSerializer.encodeError(contractError) }.getOrNull()
+                )
+            } catch (error: Throwable) {
+                val normalized = toIndeRunException(error)
+                val contractError = normalized.toContractError()
+                call.reject(
+                    contractError.message,
+                    contractError.errorClass.rawValue,
+                    null,
+                    runCatching { IndeRunSerializer.encodeError(contractError) }.getOrNull()
+                )
+            }
+        }
+    }
+
+    /**
      * Resolves with the run handle. Only validation and route-selection failures reject;
      * a provider failure, a cancellation, or completion all arrive as the single terminal
      * event on `indeRunStreamEvent` — which is why [resolved] is tracked: a PluginCall

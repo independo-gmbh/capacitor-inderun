@@ -3,119 +3,120 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>IndeRun Bridge Example</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        --bg: #ffffff;
-        --fg: #16181d;
-        --muted: #5f6672;
-        --line: #d9dde3;
-        --accent: #2f5bd7;
-        --danger: #b3261e;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #14161a;
-          --fg: #e9ecf1;
-          --muted: #9aa2ae;
-          --line: #2c313a;
-          --accent: #7f9bff;
-          --danger: #f2b8b5;
-        }
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        padding: env(safe-area-inset-top) 16px 24px;
-        background: var(--bg);
-        color: var(--fg);
-        font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-      }
-      h1 { font-size: 1.15rem; margin: 20px 0 4px; }
-      p.sub { margin: 0 0 16px; color: var(--muted); font-size: 0.85rem; }
-      label { display: block; font-size: 0.78rem; color: var(--muted); margin: 10px 0 4px; }
-      input, textarea {
-        width: 100%;
-        padding: 9px 10px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: transparent;
-        color: inherit;
-        font: inherit;
-      }
-      textarea { min-height: 72px; resize: vertical; }
-      .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
-      button {
-        flex: 1 1 auto;
-        min-width: 120px;
-        padding: 10px 12px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: transparent;
-        color: inherit;
-        font: inherit;
-        font-weight: 600;
-      }
-      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-      button:disabled { opacity: 0.45; }
-      section { margin-top: 18px; }
-      h2 { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 6px; }
-      #output {
-        white-space: pre-wrap;
-        word-break: break-word;
-        min-height: 72px;
-        padding: 10px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-      }
-      #log {
-        margin: 0;
-        padding: 10px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        max-height: 240px;
-        overflow: auto;
-        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
-        white-space: pre-wrap;
-      }
-      #log .err { color: var(--danger); }
-      #status { font-size: 0.85rem; color: var(--muted); }
-    </style>
+    <title>IndeRun Bridge Demo</title>
   </head>
   <body>
-    <h1>IndeRun Bridge Example</h1>
-    <p class="sub">Device smoke test for Mode 1 <code>run()</code> and Mode 2 <code>stream()</code>.</p>
-
-    <label for="endpoint">Proxy endpoint (OpenAI-compatible, no credentials in this app)</label>
-    <input id="endpoint" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
-           placeholder="https://your-proxy.example/api/openai-responses" />
-
-    <label for="model">Model</label>
-    <input id="model" type="text" autocapitalize="off" autocorrect="off" value="gpt-5.2" />
-
-    <label for="prompt">Prompt</label>
-    <textarea id="prompt">Explain deterministic provider routing in two sentences.</textarea>
-
-    <div class="row">
-      <button id="run">Run (Mode 1)</button>
-      <button id="stream" class="primary">Stream (Mode 2)</button>
-    </div>
-    <div class="row">
-      <button id="cancel" disabled>Cancel</button>
-      <button id="two">Start two runs</button>
-    </div>
-
-    <p id="status">Idle.</p>
+    <!--
+      The controls are static markup, deliberately. The upstream web demo re-renders its
+      whole root on every state change, which destroys the focused textarea's caret — and
+      on a phone also drops the keyboard. Only the dynamic regions below (#capabilities,
+      #refusal, #panes) are rendered from JS.
+    -->
+    <header>
+      <h1>IndeRun Bridge Demo</h1>
+      <span id="platform" class="chip">…</span>
+    </header>
+    <p class="sub">
+      On-device execution with cloud fallback, through one Capacitor API.
+      Mode 1 <code>run()</code>, Mode 2 <code>stream()</code>, and the routing that picks
+      between providers.
+    </p>
 
     <section>
-      <h2>Output</h2>
-      <div id="output"></div>
+      <h2>Providers on this device</h2>
+      <div id="capabilities" class="panel"></div>
+      <p id="platform-note" class="note"></p>
+      <div class="row">
+        <button id="refresh">Refresh capabilities</button>
+      </div>
     </section>
 
     <section>
-      <h2>Events (runId · sequence · type)</h2>
-      <pre id="log"></pre>
+      <h2>Routing</h2>
+      <div class="segmented" id="privacy" role="group" aria-label="Privacy constraint">
+        <button type="button" data-privacy="local_required" aria-pressed="false">Local Only</button>
+        <button type="button" data-privacy="local_preferred" aria-pressed="false">Prefer Local</button>
+        <button type="button" data-privacy="cloud_allowed" aria-pressed="true">Cloud Allowed</button>
+        <button type="button" data-privacy="cloud_required" aria-pressed="false">Cloud Only</button>
+      </div>
+      <p class="note">
+        IndeRun routes; you constrain. There is no provider picker, by design — this sets
+        <code>constraints.privacy</code> and the engine chooses from what is registered and
+        currently available.
+      </p>
+
+      <div class="fields">
+        <div>
+          <label for="optimize">preferences.optimizeFor (a soft hint)</label>
+          <select id="optimize">
+            <option value="">(unset)</option>
+            <option value="balanced">balanced</option>
+            <option value="latency">latency</option>
+            <option value="cost">cost</option>
+            <option value="privacy">privacy</option>
+          </select>
+        </div>
+        <div>
+          <label for="timeout">constraints.timeoutMs (blank for none)</label>
+          <input id="timeout" type="number" inputmode="numeric" min="1" placeholder="(unset)" />
+        </div>
+      </div>
+
+      <div class="toggles" id="bootstrap">
+        <label>
+          <input id="use-cloud" type="checkbox" checked />
+          <span>
+            Register the cloud provider (OpenAI-compatible)
+            <span class="hint">Uncheck to see what routing does with no cloud fallback at all.</span>
+          </span>
+        </label>
+        <label id="use-system-model-row" hidden>
+          <input id="use-system-model" type="checkbox" />
+          <span>
+            Register the browser on-device provider (Chrome Prompt API)
+            <span class="hint">Web only, and Mode 1 only — it does not stream.</span>
+          </span>
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Request</h2>
+      <div class="fields">
+        <div>
+          <label for="endpoint">Proxy endpoint (OpenAI-compatible; no credentials in this app)</label>
+          <input id="endpoint" type="url" inputmode="url" autocapitalize="off" autocorrect="off"
+                 spellcheck="false" placeholder="https://your-proxy.example/api/openai-responses" />
+        </div>
+        <div>
+          <label for="model">Model</label>
+          <input id="model" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" />
+        </div>
+      </div>
+
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt">Explain deterministic provider routing in two sentences.</textarea>
+
+      <div class="row">
+        <button id="run">Run (Mode 1)</button>
+        <button id="stream" class="primary">Stream (Mode 2)</button>
+        <button id="cancel" hidden>Cancel</button>
+      </div>
+      <div class="row">
+        <button id="two">Two concurrent streams</button>
+        <button id="diagnostics" aria-pressed="false">Show event logs</button>
+      </div>
+      <p id="status">Idle.</p>
+    </section>
+
+    <section id="refusal-section" hidden>
+      <h2>Routing refused</h2>
+      <div id="refusal"></div>
+    </section>
+
+    <section>
+      <h2>Runs</h2>
+      <div id="panes"></div>
     </section>
 
     <script type="module" src="/src/main.ts"></script>

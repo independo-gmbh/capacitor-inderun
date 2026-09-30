@@ -16,15 +16,28 @@ let package = Package(
         .library(
             name: "IndeRunCapacitor",
             targets: ["IndeRunCapacitorPlugin"]
+        ),
+        // The Capacitor CLI derives a product name from the npm package name
+        // (`@independo/capacitor-inderun` -> `IndependoCapacitorInderun`) and writes exactly
+        // that into the app's generated CapApp-SPM manifest. Without a product under this
+        // name, `cap add ios` produces a project that cannot resolve its dependencies at all.
+        // Kept alongside the original name rather than replacing it, so anything already
+        // depending on `IndeRunCapacitor` by URL keeps resolving.
+        .library(
+            name: "IndependoCapacitorInderun",
+            targets: ["IndeRunCapacitorPlugin"]
         )
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
-        // `exact:` rather than `from:` while tracking a prerelease: SwiftPM's range
-        // operators exclude prerelease versions, so `from: "0.3.0-dev.14"` would
-        // silently keep resolving 0.2.2 and fail on the missing stream(). Move back
-        // to `from: "0.3.0"` once the stable release is out.
-        .package(url: "https://github.com/independo-gmbh/inderun.git", exact: "0.3.0-dev.14")
+        // Ranged rather than `exact:` so a consumer that also depends on `inderun`
+        // directly can unify the graph. `.upToNextMinor` rather than `from:` because
+        // `from:` on a 0.x means `<1.0.0` — it would let SwiftPM float across a minor
+        // (where an 0.x SDK's breaking changes live) while package.json and
+        // android/build.gradle.kts stay pinned, which is exactly the three-platform
+        // drift the versioning policy forbids. Both operators exclude prereleases:
+        // tracking a `-dev.N` again requires going back to `exact:`.
+        .package(url: "https://github.com/independo-gmbh/inderun.git", .upToNextMinor(from: "0.3.0"))
     ],
     targets: [
         .target(

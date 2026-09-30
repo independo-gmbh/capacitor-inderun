@@ -27,3 +27,10 @@ example-app/node_modules/
 example-app/dist/
 example-app/ios/
 example-app/android/
+example-app/.env
+example-app/.env.*
+# Written by `pnpm install --ignore-workspace` inside example-app. The lockfile has no CI
+# validating it, and the generated workspace file is a copy of the root's
+# minimumReleaseAgeExclude — committing either just creates a second thing to keep in sync.
+example-app/pnpm-lock.yaml
+example-app/pnpm-workspace.yaml

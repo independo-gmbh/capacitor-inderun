@@ -10,6 +10,7 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "configure", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "run", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "checkCapabilities", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startStream", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancelStream", returnType: CAPPluginReturnPromise)
     ]
@@ -25,7 +26,7 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func configure(_ call: CAPPluginCall) {
         do {
-            try implementation.configure(options: call.options)
+            try implementation.configure(options: call.jsObjectRepresentation)
             call.resolve()
         } catch let error as IndeRunException {
             let contractError = error.toContractError()
@@ -42,8 +43,28 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func run(_ call: CAPPluginCall) {
         Task {
             do {
-                let result = try await implementation.run(requestObject: call.options)
+                let result = try await implementation.run(requestObject: call.jsObjectRepresentation)
                 call.resolve(result)
+            } catch let error as IndeRunException {
+                let contractError = error.toContractError()
+                let details = try? implementation.encode(error: contractError)
+                call.reject(contractError.message, contractError.errorClass.rawValue, error, details)
+            } catch {
+                let normalized = toIndeRunException(error)
+                let contractError = normalized.toContractError()
+                let details = try? implementation.encode(error: contractError)
+                call.reject(contractError.message, contractError.errorClass.rawValue, normalized, details)
+            }
+        }
+    }
+
+    /// Reports every registered provider's static declaration and live availability
+    /// without executing a task. Availability changes between calls — a local model can
+    /// unload, cloud credentials can expire — so callers must not cache it across a run.
+    @objc func checkCapabilities(_ call: CAPPluginCall) {
+        Task {
+            do {
+                call.resolve(try await implementation.checkCapabilities())
             } catch let error as IndeRunException {
                 let contractError = error.toContractError()
                 let details = try? implementation.encode(error: contractError)
@@ -69,7 +90,7 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
             guard let self else { return }
             do {
                 let handle = try await self.implementation.startStream(
-                    options: call.options,
+                    options: call.jsObjectRepresentation,
                     onEvent: { [weak self] streamId, event in
                         self?.notifyListeners(
                             "indeRunStreamEvent",
@@ -103,7 +124,7 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
     /// is a no-op by contract, not an error.
     @objc func cancelStream(_ call: CAPPluginCall) {
         do {
-            try implementation.cancelStream(options: call.options)
+            try implementation.cancelStream(options: call.jsObjectRepresentation)
             call.resolve()
         } catch let error as IndeRunException {
             let contractError = error.toContractError()

@@ -49,6 +49,22 @@ struct CapacitorCancelStreamOptions: Codable {
     let reason: String?
 }
 
+/// IndeRunCore's `ProviderCapabilitySnapshot` is `Sendable` but not `Codable`, even
+/// though both of its members are. This mirror exists only to get it through
+/// `JSONEncoder`; see the upstream follow-up asking for `Codable` (and a schema) on
+/// the snapshot itself.
+private struct EncodableCapabilitySnapshot: Encodable {
+    let providerId: String
+    let descriptor: ProviderDescriptor
+    let capabilities: ProviderDynamicCapabilities
+}
+
+/// A Capacitor plugin method must resolve an object, never a top-level array, so the
+/// snapshots travel wrapped. `IndeRunCapacitor` unwraps them on the JS side.
+private struct CapabilitiesEnvelope: Encodable {
+    let providers: [EncodableCapabilitySnapshot]
+}
+
 /// Called with an already-encoded event/error for one run. The plugin turns these
 /// into `notifyListeners` calls; taking them as closures keeps the pump testable
 /// without Capacitor.
@@ -80,6 +96,16 @@ final class IndeRunCapacitorBridge {
         let engine = IndeRun(registry: registry, hostServices: hostServices)
         let result = try await engine.run(request: request)
         return try encode(result)
+    }
+
+    func checkCapabilities() async throws -> JSObject {
+        guard let registry = configuredRegistry, let hostServices = configuredHostServices else {
+            throw createUnavailable(message: "Capacitor IndeRun has not been configured. Configure providers before calling checkCapabilities().")
+        }
+
+        // IndeRun is a stateless coordinator; new per call is intentional — registry is cached above.
+        let engine = IndeRun(registry: registry, hostServices: hostServices)
+        return try encode(capabilities: await engine.checkCapabilities())
     }
 
     func startStream(
@@ -173,6 +199,24 @@ final class IndeRunCapacitorBridge {
         try encodeObject(handle)
     }
 
+    /// The descriptor's enums carry explicit raw values (`in_process`, not `inProcess`),
+    /// and JSONEncoder omits nil optionals — so an unset `streamingAvailable` arrives as
+    /// an absent key rather than a null, which is what lets the JS side read absence as
+    /// "inherit `descriptor.supports.streaming`".
+    func encode(capabilities: [ProviderCapabilitySnapshot]) throws -> JSObject {
+        try encodeObject(
+            CapabilitiesEnvelope(
+                providers: capabilities.map {
+                    EncodableCapabilitySnapshot(
+                        providerId: $0.providerId,
+                        descriptor: $0.descriptor,
+                        capabilities: $0.capabilities
+                    )
+                }
+            )
+        )
+    }
+
     private func makeRegistry(openAI: OpenAIProviderBootstrapOptions?) throws -> ProviderRegistry {
         let registry = ProviderRegistry()
         try registry.register(AppleFoundationModelsProvider())
@@ -222,10 +266,26 @@ final class IndeRunCapacitorBridge {
     private func encodeObject<T: Encodable>(_ value: T) throws -> JSObject {
         let data = try JSONEncoder().encode(value)
         let object = try JSONSerialization.jsonObject(with: data, options: [])
+
+        #if canImport(Capacitor)
+        // Capacitor's JSObject is [String: any JSValue], and a plain `as?` cast cannot
+        // produce one: JSONSerialization hands back NSDictionary/NSArray values, which do
+        // not conform to JSValue, so anything with a nested object or array — a TaskResult's
+        // `output`, a stream event's `payload`, the providers array — failed the cast and
+        // surfaced as "Capacitor bridge failed to encode a JSON object". JSTypes coerces the
+        // tree recursively, which is what the cast was standing in for.
+        guard let dictionary = object as? [AnyHashable: Any],
+              let coerced = JSTypes.coerceDictionaryToJSObject(dictionary) else {
+            throw createInternal(message: "Capacitor bridge failed to encode a JSON object.")
+        }
+        return coerced
+        #else
+        // Standalone builds alias JSObject to [String: Any], where the cast is exact.
         guard let dictionary = object as? JSObject else {
             throw createInternal(message: "Capacitor bridge failed to encode a JSON object.")
         }
         return dictionary
+        #endif
     }
 
     func mapAuthMode(_ value: String?) -> OpenAIAuthMode {

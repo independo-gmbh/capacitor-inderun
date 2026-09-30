@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "lint": "tsc --noEmit",
     "sync": "cap sync"
   },
   "dependencies": {
