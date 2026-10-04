@@ -1,6 +1,6 @@
 {
   "name": "@independo/capacitor-inderun",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "On-device AI with cloud fallback for Capacitor apps. Apple Foundation Models on iOS, ML Kit GenAI (Gemini Nano) on Android, an OpenAI-compatible endpoint as fallback — one API, with streaming and cancellation.",
   "license": "MIT",
   "homepage": "https://github.com/independo-gmbh/capacitor-inderun#readme",
