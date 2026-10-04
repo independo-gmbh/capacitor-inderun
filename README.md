@@ -92,13 +92,13 @@ supports 15.0"*.
 
 ## Supported IndeRun Version
 
-This release tracks **IndeRun 0.3.0** on all three platforms:
+This release tracks **IndeRun 0.3.2** on all three platforms:
 
 | Platform | Artifact | Constraint |
 |----------|----------|------------|
-| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.3.0` (exact) |
-| iOS      | `inderun` SwiftPM package | `>=0.3.0 <0.4.0` |
-| Android  | `app.independo.inderun:inderun-*` | `0.3.0` (exact) |
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.3.2` (exact) |
+| iOS      | `inderun` SwiftPM package | `>=0.3.2 <0.4.0` |
+| Android  | `app.independo.inderun:inderun-*` | `0.3.2` (exact) |
 
 The npm and Gradle pins are exact and all three are bumped together — a partial bump is how the
 platforms drift apart. The SwiftPM constraint is ranged rather than exact so an app that also depends

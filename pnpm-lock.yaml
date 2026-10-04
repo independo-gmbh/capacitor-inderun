@@ -12,11 +12,11 @@ importers:
         specifier: ^8.0.0
         version: 8.5.2
       '@independo/inderun-contracts':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: 0.3.2
+        version: 0.3.2
       '@independo/inderun-web':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: 0.3.2
+        version: 0.3.2
     devDependencies:
       '@saithodev/semantic-release-backmerge':
         specifier: ^4.0.1
@@ -228,16 +228,16 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@independo/inderun-contracts@0.3.0':
-    resolution: {integrity: sha512-AhxWYjamUrOOx9F2gB0Es+ezH+n/whLv7yw1yTO/5jbiHAffvgNYF7O3kodbhtxIrFpDUMu7eHMFpMmkT9/oQA==}
+  '@independo/inderun-contracts@0.3.2':
+    resolution: {integrity: sha512-pnAfCrzkg7Tgmm64l1KNcTAphUk0V7uyPF3wTDSfDyL16ndPxuwWQBIOvNxUmkm2aIhv5l30UQmG0y0Qt5jQfw==}
     engines: {node: '>=24'}
 
-  '@independo/inderun-route-core-wasm@0.3.0':
-    resolution: {integrity: sha512-bQC8m2EVyJyX9D1qdUZ1KQ4r/pNkXxKWU5/1vFvfqMn9vGqOjYiccl8IhAKSnvh0Cp4ddAtnNgTRc2d3doS3rw==}
+  '@independo/inderun-route-core-wasm@0.3.2':
+    resolution: {integrity: sha512-ppH8FEoMM9hBnodo+GFjBR3pluUGI+2FOxUkol5nkNgEt9rcysbxQOZibVGqXPIVqQ1DMQG49NUqQ9CMUFRNtw==}
     engines: {node: '>=24'}
 
-  '@independo/inderun-web@0.3.0':
-    resolution: {integrity: sha512-7zPyIqhc/DddOFBHODIlGHjX3vg9KV91TP3Nkpnn5aVGXeveJLoyA2+V/GjfhKYqsRGCyIk0Q0Ew1nLloZilWg==}
+  '@independo/inderun-web@0.3.2':
+    resolution: {integrity: sha512-c6MPVbBQbMSV1nZn8zJl/PlG99FWren26T5W/tovBknJi1MWGHnwo4IUC4zWevU+EbsyHdrUEqDdb+mCXlPtyg==}
     engines: {node: '>=24'}
     peerDependencies:
       '@huggingface/transformers': ^4.0.0
@@ -2459,16 +2459,16 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@independo/inderun-contracts@0.3.0':
+  '@independo/inderun-contracts@0.3.2':
     dependencies:
       ajv: 8.20.0
 
-  '@independo/inderun-route-core-wasm@0.3.0': {}
+  '@independo/inderun-route-core-wasm@0.3.2': {}
 
-  '@independo/inderun-web@0.3.0':
+  '@independo/inderun-web@0.3.2':
     dependencies:
-      '@independo/inderun-contracts': 0.3.0
-      '@independo/inderun-route-core-wasm': 0.3.0
+      '@independo/inderun-contracts': 0.3.2
+      '@independo/inderun-route-core-wasm': 0.3.2
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
@@ -3374,6 +3374,10 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
       picomatch: 4.0.5
+
+  fdir@6.5.0(picomatch@4.0.7):
+    optionalDependencies:
+      picomatch: 4.0.7
 
   figures@2.0.0:
     dependencies:
@@ -4312,8 +4316,8 @@ snapshots:
   vite@7.3.6(@types/node@24.19.0):
     dependencies:
       esbuild: 0.28.1
-      fdir: 6.5.0(picomatch@4.0.5)
-      picomatch: 4.0.5
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
       postcss: 8.5.16
       rollup: 4.62.2
       tinyglobby: 0.2.17
