@@ -9,6 +9,14 @@ updates:
     # policy in the main monorepo.
     cooldown:
       default-days: 7
+    ignore:
+      # inderun is bumped by hand on all three platforms at once (see the
+      # Versioning Policy in CLAUDE.md); a per-ecosystem bump drifts them apart.
+      - dependency-name: "@independo/inderun-*"
+      # Types track the oldest supported runtime (engines.node >=24), not the newest.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
     groups:
       npm-routine:
         patterns:
@@ -24,6 +32,11 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: "app.independo.inderun:*"
+      # compileOnly floor: compiling against a newer core could use APIs that
+      # apps on the lowest supported Capacitor 8 release don't have.
+      - dependency-name: "com.capacitorjs:core"
     groups:
       gradle-routine:
         patterns:
@@ -39,6 +52,8 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 7
+    ignore:
+      - dependency-name: "github.com/independo-gmbh/inderun"
     groups:
       swift-routine:
         patterns:
