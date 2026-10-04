@@ -5,7 +5,7 @@ buildscript {
         // on the buildscript classpath (without applying org.jetbrains.kotlin.android,
         // which would register competing compile tasks) elevates the version AGP's
         // built-in Kotlin compilation actually resolves and uses.
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20")
     }
 }
 
@@ -41,14 +41,14 @@ android {
 dependencies {
     compileOnly("com.capacitorjs:core:8.0.0")
     testImplementation("com.capacitorjs:core:8.0.0")
-    implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("app.independo.inderun:inderun-contracts:0.3.0")
     implementation("app.independo.inderun:inderun-core:0.3.0")
     implementation("app.independo.inderun:inderun-kotlin:0.3.0")
     implementation("app.independo.inderun:inderun-mlkit-providers:0.3.0")
     implementation("app.independo.inderun:inderun-openai-providers:0.3.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260522")

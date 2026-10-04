@@ -9,7 +9,7 @@ pluginManagement {
     // this directory (pnpm test:android / verify:android). A Capacitor app that includes the
     // module uses its own settings file, so AGP comes from the app's classpath there.
     plugins {
-        id("com.android.library") version "9.3.1"
+        id("com.android.library") version "9.4.1"
     }
 }
 
