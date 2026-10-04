@@ -11,6 +11,17 @@
 const branch = (process.env.GITHUB_REF_NAME || "").trim();
 const isStable = branch === "main";
 
+// How a commit body declares a breaking change. The parser's default pattern is
+// case-insensitive and needs only whitespace after the keyword, so ordinary prose that
+// happens to wrap onto a new line as "breaking changes live ..." counted as one — which is
+// exactly how 2.0.0-dev.1 was released by accident. Require the upper-case token and its
+// colon, as the Conventional Commits spec does. Shared by the analyzer (which decides the
+// bump) and the notes generator (which lists the change), so the two cannot disagree.
+const breakingChangeParserOpts = {
+  noteKeywords: ["BREAKING CHANGE", "BREAKING CHANGES"],
+  notesPattern: (keywords) => new RegExp(`^[\\s|*]*(${keywords}):\\s+(.*)`)
+};
+
 const plugins = [
   [
     "@semantic-release/commit-analyzer",
@@ -30,15 +41,14 @@ const plugins = [
         { type: "feat", release: "minor" },
         { type: "fix", release: "patch" }
       ],
-      parserOpts: {
-        noteKeywords: ["BREAKING CHANGE", "BREAKING CHANGES"]
-      }
+      parserOpts: breakingChangeParserOpts
     }
   ],
   [
     "@semantic-release/release-notes-generator",
     {
       preset: "conventionalcommits",
+      parserOpts: breakingChangeParserOpts,
       presetConfig: {
         types: [
           { type: "feat", section: "Features 🚀", hidden: false },
