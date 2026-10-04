@@ -37,7 +37,7 @@ let package = Package(
         // android/build.gradle.kts stay pinned, which is exactly the three-platform
         // drift the versioning policy forbids. Both operators exclude prereleases:
         // tracking a `-dev.N` again requires going back to `exact:`.
-        .package(url: "https://github.com/independo-gmbh/inderun.git", .upToNextMinor(from: "0.3.0"))
+        .package(url: "https://github.com/independo-gmbh/inderun.git", .upToNextMinor(from: "0.3.2"))
     ],
     targets: [
         .target(
