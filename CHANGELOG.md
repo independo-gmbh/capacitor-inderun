@@ -1,3 +1,15 @@
+## [1.1.1](https://github.com/independo-gmbh/capacitor-inderun/compare/v1.1.0...v1.1.1) (2026-10-20)
+
+### Bug Fixes 🛠️
+
+* **deps:** patch handlebars, postcss, nanoid and source-map-js advisories ([19f290e](https://github.com/independo-gmbh/capacitor-inderun/commit/19f290ee8a8001104c7cf152ddf283403dcae819))
+* **deps:** track inderun 0.3.3 on all three platforms ([39e93a3](https://github.com/independo-gmbh/capacitor-inderun/commit/39e93a3226a7d052803a8fb694ee009fc0eaef48))
+
+### Miscellaneous Chores 🛠️
+
+* **deps:** bump gradle-wrapper in /android in the gradle-routine group ([e378f6a](https://github.com/independo-gmbh/capacitor-inderun/commit/e378f6a8a51b5600b422ab216657724928912e5b))
+* **deps:** bump the npm-routine group with 3 updates ([2ef2dcc](https://github.com/independo-gmbh/capacitor-inderun/commit/2ef2dccfcfe35c42c443189c443fa94c5ef823b6))
+
 ## [1.1.0](https://github.com/independo-gmbh/capacitor-inderun/compare/v1.0.0...v1.1.0) (2026-10-04)
 
 ### Features 🚀
