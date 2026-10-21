@@ -62,6 +62,7 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
         XCTAssertEqual(payload["finishReason"] as? String, "stop")
         XCTAssertEqual((payload["usage"] as? [String: Any])?["totalTokens"] as? Int, 8)
         XCTAssertEqual((payload["telemetry"] as? [String: Any])?["providerUsed"] as? String, "openai")
+        XCTAssertEqual((payload["provenance"] as? [String: Any])?["providerId"] as? String, "openai:gpt-5.2")
         // The error/cancellation branches' fields must not leak into a completion.
         XCTAssertNil(payload["error"])
         XCTAssertNil(payload["partialText"])

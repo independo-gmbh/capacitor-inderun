@@ -134,6 +134,41 @@ const result = await inderun.run({
 (`openai:gpt-5.2` above) on every platform. That id is the `providerId` results, errors and
 telemetry report, so code that compares provider ids must expect it rather than `openai`.
 
+## Model Profiles and Provenance
+
+`modelProfiles` names ordered lists of targets, and a request opts into one with
+`modelProfile`. Routing then stays within that list, in that order, after placement
+constraints such as `privacy`. Without a `modelProfile` — or with `"auto"`, which cannot be
+redefined — every registered target is eligible; naming a profile that was not configured
+fails the request.
+
+```ts
+const inderun = createIndeRunCapacitor({
+  openAI: { models: ["gpt-5.2", "gpt-5-mini"], endpointUrl: "/api/inderun/openai-responses", auth: "none" },
+  modelProfiles: {
+    smart: ["openai:gpt-5.2"],
+    fast: ["openai:gpt-5-mini"]
+  }
+});
+
+const result = await inderun.run({
+  schemaVersion: "1.0",
+  task: { kind: "text_to_text" },
+  prompt: "Summarize why a thin bridge matters.",
+  modelProfile: "fast"
+});
+
+result.provenance; // { providerId: "openai:gpt-5-mini", locality: "cloud", attempts: [...], ... }
+```
+
+Profiles list target ids, so an on-device provider can appear in one too; its id differs per
+platform. `checkCapabilities()` lists the ids registered on the current one.
+
+Every `TaskResult`, `IndeRunError` and terminal stream event carries `provenance`: where the run
+executed (`providerId`, `locality`), the model the target is configured with and, when the
+backend names one, the model that served it, plus every attempt and every route rejection. Read
+it rather than `telemetry.providerUsed` to show users where their request went.
+
 ## Streaming (Mode 2)
 
 `stream()` returns the same `StreamRun` shape the platform SDKs return directly: the
@@ -190,7 +225,7 @@ things are specific to reaching them through a bridge:
 > app may attach its own listener to them; renaming one is a breaking change.
 
 The `IndeRunCapacitorPlugin` and `ConfigureOptions` contracts — including the `openAI`,
-`systemModel` and `onnx` bootstrap configs and the `allowDirectOpenAIEndpoint` flag — are
+`systemModel` and `onnx` bootstrap configs, `modelProfiles` and the `allowDirectOpenAIEndpoint` flag — are
 defined and documented in `src/definitions.ts`.
 
 `systemModel`, `onnx` and `allowDirectOpenAIEndpoint` are **web-only** and ignored on iOS

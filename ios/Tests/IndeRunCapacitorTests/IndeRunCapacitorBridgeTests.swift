@@ -127,6 +127,55 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         XCTAssertThrowsError(try IndeRunCapacitorBridge().makeRegistry(openAI: options.openAI))
     }
 
+    // MARK: - modelProfiles
+
+    func testDecodesModelProfiles() throws {
+        let json: [String: Any] = [
+            "openAI": ["models": ["gpt-5.2", "gpt-5-mini"]],
+            "modelProfiles": ["smart": ["openai:gpt-5.2", "apple.foundation-models"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
+
+        XCTAssertEqual(options.modelProfiles, ["smart": ["openai:gpt-5.2", "apple.foundation-models"]])
+        let profiles = try IndeRunCapacitorBridge().makeModelProfiles(options.modelProfiles)
+        guard case .profile(let profile) = profiles.resolve("smart") else {
+            return XCTFail("Expected the configured profile to resolve.")
+        }
+        XCTAssertEqual(profile.targetIds, ["openai:gpt-5.2", "apple.foundation-models"])
+    }
+
+    func testRejectsRedefiningTheAutoProfileWithTheReason() throws {
+        XCTAssertThrowsError(try IndeRunCapacitorBridge().makeModelProfiles(["auto": ["openai:gpt-5.2"]])) { error in
+            let contractError = toIndeRunException(error).toContractError()
+            XCTAssertEqual(contractError.errorClass, .Internal)
+            XCTAssertTrue(contractError.message.contains("auto"))
+        }
+    }
+
+    func testEncodesErrorProvenance() throws {
+        let error = IndeRunError(
+            details: nil,
+            errorClass: .Unavailable,
+            message: "No provider.",
+            provenance: sampleProvenance(),
+            providerId: nil,
+            retryable: nil,
+            retryAfterMs: nil,
+            runId: "run_1",
+            schemaVersion: .the10
+        )
+
+        let encoded = try IndeRunCapacitorBridge().encode(error: error)
+        let provenance = try XCTUnwrap(encoded["provenance"] as? [String: Any])
+
+        XCTAssertEqual(provenance["providerId"] as? String, "openai:gpt-5.2")
+        XCTAssertEqual(provenance["locality"] as? String, "cloud")
+        XCTAssertEqual(provenance["modelProfile"] as? String, "auto")
+        XCTAssertEqual((provenance["attempts"] as? [[String: Any]])?.first?["outcome"] as? String, "succeeded")
+        XCTAssertFalse(provenance.keys.contains("reportedModel"))
+    }
+
     // MARK: - encode(error:)
 
     func testEncodesIndeRunErrorRequiredFieldsOnly() throws {

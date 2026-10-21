@@ -49,6 +49,9 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
       if (options.onnx !== undefined) {
         webOptions.onnx = compactOnnxOptions(options.onnx);
       }
+      if (options.modelProfiles !== undefined) {
+        webOptions.modelProfiles = options.modelProfiles;
+      }
       if (options.allowDirectOpenAIEndpoint !== undefined) {
         webOptions.allowDirectOpenAIEndpoint = options.allowDirectOpenAIEndpoint;
       }

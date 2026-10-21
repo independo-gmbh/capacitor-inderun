@@ -31,7 +31,19 @@ describe("IndeRunWeb", () => {
       runId: "run_123",
       finishReason: "stop",
       output: { type: "text", text: "Thin wrapper." },
-      telemetry: { providerUsed: "openai", totalMs: 12 }
+      telemetry: { providerUsed: "openai:gpt-5.2", totalMs: 12 },
+      // Passed through untouched, like every other field the engine returns.
+      provenance: {
+        schemaVersion: "1.0",
+        modelProfile: "auto",
+        providerId: "openai:gpt-5.2",
+        locality: "cloud",
+        configuredModel: "gpt-5.2",
+        fallbackOccurred: false,
+        attemptCount: 1,
+        attempts: [{ providerId: "openai:gpt-5.2", outcome: "succeeded" }],
+        routeRejections: []
+      }
     };
 
     const runMock = vi.fn().mockResolvedValue(result);
@@ -116,6 +128,35 @@ describe("IndeRunWeb", () => {
       systemModel: { id: "local.system-model.web", timeoutMs: 30_000 },
       onnx: { modelPackage: { id: "demo", format: "onnx" } }
     });
+  });
+
+  it("forwards modelProfiles to the web SDK unchanged", async () => {
+    createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+    const plugin = new IndeRunWeb();
+    await plugin.configure({
+      openAI: { models: ["gpt-5.2", "gpt-5-mini"], auth: "none" },
+      modelProfiles: { smart: ["openai:gpt-5.2"], fast: ["openai:gpt-5-mini"] }
+    });
+
+    expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({
+      openAI: { models: ["gpt-5.2", "gpt-5-mini"], auth: "none" },
+      modelProfiles: { smart: ["openai:gpt-5.2"], fast: ["openai:gpt-5-mini"] }
+    });
+  });
+
+  it("rejects a configuration that redefines the built-in auto profile", async () => {
+    const actual =
+      await vi.importActual<typeof import("@independo/inderun-web")>("@independo/inderun-web");
+    createIndeRunWebMock.mockImplementation(actual.createIndeRunWeb);
+
+    const plugin = new IndeRunWeb();
+    await expect(
+      plugin.configure({
+        openAI: { models: ["gpt-5.2"], endpointUrl: "/api/inderun/openai-responses", auth: "none" },
+        modelProfiles: { auto: ["openai:gpt-5.2"] }
+      })
+    ).rejects.toMatchObject({ schemaVersion: "1.0", message: expect.stringContaining("auto") });
   });
 
   it("returns a normalized contract error when run() is called before configure()", async () => {
