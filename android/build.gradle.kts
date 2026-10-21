@@ -5,7 +5,7 @@ buildscript {
         // on the buildscript classpath (without applying org.jetbrains.kotlin.android,
         // which would register competing compile tasks) elevates the version AGP's
         // built-in Kotlin compilation actually resolves and uses.
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.20")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21")
     }
 }
 
