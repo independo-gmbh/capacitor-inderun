@@ -1,3 +1,18 @@
+## [1.2.0](https://github.com/independo-gmbh/capacitor-inderun/compare/v1.1.1...v1.2.0) (2026-10-21)
+
+### ⚠ BREAKING CHANGES
+
+* the openAI bootstrap option takes models: string[] instead of model: string, and OpenAI targets are registered as "openai:<model>" (for example "openai:gpt-5.2") on every platform instead of "openai". Code that compares provider ids must expect the new ids.
+
+### Features 🚀
+
+* forward model profiles and execution provenance ([92c8433](https://github.com/independo-gmbh/capacitor-inderun/commit/92c84333c1b570d619d5203b9ac90f345c0c26b7))
+* track inderun 0.4.0 with model-bound OpenAI targets ([ca073e4](https://github.com/independo-gmbh/capacitor-inderun/commit/ca073e45dcab8ac804f02621029458521bb796e5))
+
+### Miscellaneous Chores 🛠️
+
+* **release:** release breaking changes as minor while inderun is pre-1.0 ([adbea0c](https://github.com/independo-gmbh/capacitor-inderun/commit/adbea0cfd46b4002aa529e19edc9beffa3422cda))
+
 ## [1.1.1](https://github.com/independo-gmbh/capacitor-inderun/compare/v1.1.0...v1.1.1) (2026-10-20)
 
 ### Bug Fixes 🛠️
