@@ -10,8 +10,11 @@ import IndeRunContracts
 import IndeRunOpenAIProviders
 import IndeRunSwift
 
+/// One OpenAI-compatible target is registered per entry in `models`, with id
+/// `openai:<model>` -- the id scheme the web SDK and the upstream factories use, so a
+/// model profile names the same targets on every platform.
 struct OpenAIProviderBootstrapOptions: Codable {
-    let model: String
+    let models: [String]
     let endpointURL: String?
     let auth: String?
     let authContextRef: String?
@@ -23,7 +26,7 @@ struct OpenAIProviderBootstrapOptions: Codable {
     // this mapping the field silently decodes as nil and the provider falls back to the
     // default endpoint.
     enum CodingKeys: String, CodingKey {
-        case model
+        case models
         case endpointURL = "endpointUrl"
         case auth
         case authContextRef
@@ -33,6 +36,8 @@ struct OpenAIProviderBootstrapOptions: Codable {
 
 struct CapacitorRunOptions: Codable {
     let openAI: OpenAIProviderBootstrapOptions?
+    /// Profile name to ordered target ids, as `IndeRun(modelProfiles:)` takes it.
+    let modelProfiles: [String: [String]]?
     let allowDirectOpenAIEndpoint: Bool? // web-only, no-op on native
 }
 
@@ -74,6 +79,7 @@ typealias StreamErrorSink = @Sendable (String, JSObject) -> Void
 final class IndeRunCapacitorBridge {
     private var configuredRegistry: ProviderRegistry?
     private var configuredHostServices: HostServices?
+    private var configuredModelProfiles: ModelProfiles = .none
     let streams = StreamRegistry()
 
     deinit {
@@ -82,8 +88,12 @@ final class IndeRunCapacitorBridge {
 
     func configure(options: JSObject) throws {
         let runOptions = try decodeConfigureOptions(from: options)
+        // Validated before anything is replaced, so a refused configuration leaves the
+        // previous one in place rather than half of each.
+        let modelProfiles = try makeModelProfiles(runOptions.modelProfiles)
         configuredRegistry = try makeRegistry(openAI: runOptions.openAI)
         configuredHostServices = DefaultHostServices.make()
+        configuredModelProfiles = modelProfiles
     }
 
     func run(requestObject: JSObject) async throws -> JSObject {
@@ -93,7 +103,7 @@ final class IndeRunCapacitorBridge {
 
         let request = try decodeRequest(from: requestObject)
         // IndeRun is a stateless coordinator; new per call is intentional — registry is cached above.
-        let engine = IndeRun(registry: registry, hostServices: hostServices)
+        let engine = makeEngine(registry: registry, hostServices: hostServices)
         let result = try await engine.run(request: request)
         return try encode(result)
     }
@@ -104,7 +114,7 @@ final class IndeRunCapacitorBridge {
         }
 
         // IndeRun is a stateless coordinator; new per call is intentional — registry is cached above.
-        let engine = IndeRun(registry: registry, hostServices: hostServices)
+        let engine = makeEngine(registry: registry, hostServices: hostServices)
         return try encode(capabilities: await engine.checkCapabilities())
     }
 
@@ -125,7 +135,7 @@ final class IndeRunCapacitorBridge {
         let run: StreamRun
         do {
             // IndeRun is a stateless coordinator; new per call is intentional — registry is cached above.
-            let engine = IndeRun(registry: registry, hostServices: hostServices)
+            let engine = makeEngine(registry: registry, hostServices: hostServices)
             run = try await engine.stream(request: start.request)
         } catch {
             streams.finish(streamId: start.streamId)
@@ -217,23 +227,42 @@ final class IndeRunCapacitorBridge {
         )
     }
 
-    private func makeRegistry(openAI: OpenAIProviderBootstrapOptions?) throws -> ProviderRegistry {
+    func makeModelProfiles(_ profiles: [String: [String]]?) throws -> ModelProfiles {
+        guard let profiles else { return .none }
+        do {
+            return try ModelProfiles(profiles)
+        } catch let error as ModelProfilesConfigurationError {
+            // Not an IndeRunError, so it would otherwise reach JS as a generic Internal
+            // error without the reason.
+            throw createInternal(message: error.description)
+        }
+    }
+
+    private func makeEngine(registry: ProviderRegistry, hostServices: HostServices) -> IndeRun {
+        IndeRun(registry: registry, hostServices: hostServices, modelProfiles: configuredModelProfiles)
+    }
+
+    func makeRegistry(openAI: OpenAIProviderBootstrapOptions?) throws -> ProviderRegistry {
         let registry = ProviderRegistry()
         try registry.register(AppleFoundationModelsProvider())
 
         if let openAI {
-            try registry.register(
-                OpenAIProvider(
-                    options: OpenAIProviderOptions(
-                        id: "openai",
-                        model: openAI.model,
-                        endpointURL: openAI.endpointURL ?? defaultOpenAIResponsesEndpoint,
-                        auth: mapAuthMode(openAI.auth),
-                        authContextRef: openAI.authContextRef,
-                        timeoutMs: openAI.timeoutMs
-                    )
-                )
+            // Upstream's `makeOpenAIRegistry` builds a registry of its own, while this one
+            // also carries the on-device provider; `providerOptions(model:)` is the shared
+            // half, so the target ids cannot drift from the factory's.
+            guard !openAI.models.isEmpty else {
+                throw createInternal(message: "Capacitor openAI bootstrap requires models to list at least one model.")
+            }
+            let factory = OpenAIFactoryOptions(
+                models: openAI.models,
+                endpointURL: openAI.endpointURL ?? defaultOpenAIResponsesEndpoint,
+                auth: mapAuthMode(openAI.auth),
+                authContextRef: openAI.authContextRef,
+                timeoutMs: openAI.timeoutMs
             )
+            for model in openAI.models {
+                try registry.register(OpenAIProvider(options: factory.providerOptions(model: model)))
+            }
         }
 
         return registry

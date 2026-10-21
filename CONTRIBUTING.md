@@ -70,6 +70,7 @@ configuration bootstrap) changes.
 
 ## Versioning
 
-This package's `MAJOR.MINOR` tracks `inderun`'s own npm package versions
-(`@independo/inderun-web`, `@independo/inderun-contracts`) — a hard rule for `MAJOR`, generally
-followed for `MINOR`. `PATCH` is independent of `inderun`'s patch releases in the other direction.
+This package versions independently of `inderun`, under semver driven by `semantic-release`. While
+`inderun` is pre-1.0, a `BREAKING CHANGE:` footer releases a minor rather than a major. The supported
+`inderun` version is stated in `README.md`. See the Versioning Policy in [`AGENTS.md`](AGENTS.md)
+for the pinning rules.

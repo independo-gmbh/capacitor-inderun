@@ -31,7 +31,19 @@ describe("IndeRunWeb", () => {
       runId: "run_123",
       finishReason: "stop",
       output: { type: "text", text: "Thin wrapper." },
-      telemetry: { providerUsed: "openai", totalMs: 12 }
+      telemetry: { providerUsed: "openai:gpt-5.2", totalMs: 12 },
+      // Passed through untouched, like every other field the engine returns.
+      provenance: {
+        schemaVersion: "1.0",
+        modelProfile: "auto",
+        providerId: "openai:gpt-5.2",
+        locality: "cloud",
+        configuredModel: "gpt-5.2",
+        fallbackOccurred: false,
+        attemptCount: 1,
+        attempts: [{ providerId: "openai:gpt-5.2", outcome: "succeeded" }],
+        routeRejections: []
+      }
     };
 
     const runMock = vi.fn().mockResolvedValue(result);
@@ -47,7 +59,7 @@ describe("IndeRunWeb", () => {
     await expect(
       plugin.configure({
         openAI: {
-          model: "gpt-5.2",
+          models: ["gpt-5.2"],
           endpointUrl: "/api/inderun/openai-responses",
           auth: "none"
         }
@@ -61,7 +73,7 @@ describe("IndeRunWeb", () => {
     // compactOpenAIOptions() must omit absent optional fields entirely (not set them to undefined)
     expect(webCallArg).toStrictEqual({
       openAI: {
-        model: "gpt-5.2",
+        models: ["gpt-5.2"],
         endpointUrl: "/api/inderun/openai-responses",
         auth: "none"
       }
@@ -106,16 +118,45 @@ describe("IndeRunWeb", () => {
 
     const plugin = new IndeRunWeb();
     await plugin.configure({
-      openAI: { model: "gpt-5.2", auth: "none" },
+      openAI: { models: ["gpt-5.2"], auth: "none" },
       systemModel: { id: "local.system-model.web", timeoutMs: 30_000 },
       onnx: { modelPackage: { id: "demo", format: "onnx" } }
     });
 
     expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({
-      openAI: { model: "gpt-5.2", auth: "none" },
+      openAI: { models: ["gpt-5.2"], auth: "none" },
       systemModel: { id: "local.system-model.web", timeoutMs: 30_000 },
       onnx: { modelPackage: { id: "demo", format: "onnx" } }
     });
+  });
+
+  it("forwards modelProfiles to the web SDK unchanged", async () => {
+    createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+    const plugin = new IndeRunWeb();
+    await plugin.configure({
+      openAI: { models: ["gpt-5.2", "gpt-5-mini"], auth: "none" },
+      modelProfiles: { smart: ["openai:gpt-5.2"], fast: ["openai:gpt-5-mini"] }
+    });
+
+    expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({
+      openAI: { models: ["gpt-5.2", "gpt-5-mini"], auth: "none" },
+      modelProfiles: { smart: ["openai:gpt-5.2"], fast: ["openai:gpt-5-mini"] }
+    });
+  });
+
+  it("rejects a configuration that redefines the built-in auto profile", async () => {
+    const actual =
+      await vi.importActual<typeof import("@independo/inderun-web")>("@independo/inderun-web");
+    createIndeRunWebMock.mockImplementation(actual.createIndeRunWeb);
+
+    const plugin = new IndeRunWeb();
+    await expect(
+      plugin.configure({
+        openAI: { models: ["gpt-5.2"], endpointUrl: "/api/inderun/openai-responses", auth: "none" },
+        modelProfiles: { auto: ["openai:gpt-5.2"] }
+      })
+    ).rejects.toMatchObject({ schemaVersion: "1.0", message: expect.stringContaining("auto") });
   });
 
   it("returns a normalized contract error when run() is called before configure()", async () => {
@@ -145,7 +186,7 @@ describe("IndeRunWeb", () => {
 
     await IndeRunCapacitor.configure({
       openAI: {
-        model: "gpt-5.2"
+        models: ["gpt-5.2"]
       }
     });
 
@@ -191,7 +232,7 @@ describe("IndeRunWeb", () => {
       createIndeRunWebMock.mockReturnValue({ checkCapabilities: checkCapabilitiesMock });
 
       const plugin = new IndeRunWeb();
-      await plugin.configure({ openAI: { model: "gpt-5.2" } });
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
 
       await expect(plugin.checkCapabilities()).resolves.toStrictEqual({ providers: [snapshot] });
       expect(checkCapabilitiesMock).toHaveBeenCalledOnce();
@@ -206,7 +247,7 @@ describe("IndeRunWeb", () => {
       });
 
       const plugin = new IndeRunWeb();
-      await plugin.configure({ openAI: { model: "gpt-5.2" } });
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
 
       const { providers } = await plugin.checkCapabilities();
       expect(providers[0].capabilities).not.toHaveProperty("streamingAvailable");
@@ -228,7 +269,7 @@ describe("IndeRunWeb", () => {
       });
 
       const plugin = new IndeRunWeb();
-      await plugin.configure({ openAI: { model: "gpt-5.2" } });
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
 
       await expect(plugin.checkCapabilities()).rejects.toMatchObject({
         schemaVersion: "1.0",
@@ -240,7 +281,7 @@ describe("IndeRunWeb", () => {
       const checkCapabilitiesMock = vi.fn().mockResolvedValue([snapshot]);
       createIndeRunWebMock.mockReturnValue({ checkCapabilities: checkCapabilitiesMock });
 
-      const inderun = createIndeRunCapacitor({ openAI: { model: "gpt-5.2" } });
+      const inderun = createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } });
 
       await expect(inderun.checkCapabilities()).resolves.toStrictEqual([snapshot]);
       await expect(inderun.checkCapabilities()).resolves.toStrictEqual([snapshot]);
@@ -323,7 +364,7 @@ describe("IndeRunWeb", () => {
     async function configuredPlugin(stream: unknown): Promise<IndeRunWeb> {
       createIndeRunWebMock.mockReturnValue({ run: vi.fn(), stream });
       const plugin = new IndeRunWeb();
-      await plugin.configure({ openAI: { model: "gpt-5.2" } });
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
       return plugin;
     }
 

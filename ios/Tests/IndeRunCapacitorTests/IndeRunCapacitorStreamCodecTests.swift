@@ -48,7 +48,8 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
             finalText: "all done",
             finishReason: .stop,
             usage: TaskResultUsage(inputTokens: 3, outputTokens: 5, totalTokens: 8),
-            telemetry: StreamTerminalOutcomeTelemetry(providerUsed: "openai", totalMs: 42)
+            telemetry: StreamTerminalOutcomeTelemetry(providerUsed: "openai", totalMs: 42),
+            provenance: sampleProvenance()
         )
 
         let encoded = try bridge.encode(
@@ -61,6 +62,7 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
         XCTAssertEqual(payload["finishReason"] as? String, "stop")
         XCTAssertEqual((payload["usage"] as? [String: Any])?["totalTokens"] as? Int, 8)
         XCTAssertEqual((payload["telemetry"] as? [String: Any])?["providerUsed"] as? String, "openai")
+        XCTAssertEqual((payload["provenance"] as? [String: Any])?["providerId"] as? String, "openai:gpt-5.2")
         // The error/cancellation branches' fields must not leak into a completion.
         XCTAssertNil(payload["error"])
         XCTAssertNil(payload["partialText"])
@@ -76,13 +78,16 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
             details: ["endpoint": JSONAny("https://example.test")],
             errorClass: .RateLimited,
             message: "Too many requests.",
+            provenance: nil,
             providerId: "openai",
             retryable: true,
             retryAfterMs: 2_000,
             runId: "run_1",
             schemaVersion: .the10
         )
-        let outcome = StreamTerminalOutcome.failed(runId: "run_1", error: error, partialText: "half ")
+        let outcome = StreamTerminalOutcome.failed(
+            runId: "run_1", error: error, partialText: "half ", provenance: sampleProvenance()
+        )
 
         let encoded = try bridge.encode(
             streamEvent: event(type: "terminal", sequence: 7, payload: Payload(terminalOutcome: outcome))
@@ -105,7 +110,9 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
             streamEvent: event(
                 type: "terminal",
                 payload: Payload(
-                    terminalOutcome: .cancelled(runId: "run_1", partialText: "part", reason: "user left")
+                    terminalOutcome: .cancelled(
+                        runId: "run_1", partialText: "part", reason: "user left", provenance: sampleProvenance()
+                    )
                 )
             )
         )
@@ -115,7 +122,9 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
             streamEvent: event(
                 type: "terminal",
                 payload: Payload(
-                    terminalOutcome: .cancelled(runId: "run_1", partialText: "part", reason: nil)
+                    terminalOutcome: .cancelled(
+                        runId: "run_1", partialText: "part", reason: nil, provenance: sampleProvenance()
+                    )
                 )
             )
         )
@@ -130,7 +139,7 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
         let bridge = IndeRunCapacitorBridge()
         let payload = Payload(
             text: nil, phase: .providerSelected, finalText: nil, finishReason: nil, outcome: nil,
-            runId: nil, schemaVersion: nil, telemetry: nil, usage: nil, error: nil,
+            provenance: nil, runId: nil, schemaVersion: nil, telemetry: nil, usage: nil, error: nil,
             partialText: nil, reason: nil
         )
 

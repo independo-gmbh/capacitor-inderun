@@ -35,7 +35,7 @@ class IndeRunSerializerTest {
                 """
                 {
                   "openAI": {
-                    "model": "gpt-5.2",
+                    "models": ["gpt-5.2"],
                     "endpointUrl": "/api/inderun/openai-responses",
                     "auth": "none"
                   }
@@ -45,7 +45,7 @@ class IndeRunSerializerTest {
         )
 
         assertEquals("Hello", request.prompt)
-        assertEquals("gpt-5.2", options.openAI?.model)
+        assertEquals(listOf("gpt-5.2"), options.openAI?.models)
         assertEquals("/api/inderun/openai-responses", options.openAI?.endpointUrl)
     }
 
@@ -153,7 +153,7 @@ class IndeRunSerializerTest {
             JSONObject(
                 """
                 {
-                  "openAI": { "model": "gpt-5.2", "auth": "none" },
+                  "openAI": { "models": ["gpt-5.2"], "auth": "none" },
                   "systemModel": { "id": "local.system-model.web", "timeoutMs": 30000 },
                   "onnx": { "modelPackage": { "id": "demo", "format": "onnx" } }
                 }
@@ -161,7 +161,7 @@ class IndeRunSerializerTest {
             )
         )
 
-        assertEquals("gpt-5.2", options.openAI?.model)
+        assertEquals(listOf("gpt-5.2"), options.openAI?.models)
         assertEquals("none", options.openAI?.auth)
     }
 

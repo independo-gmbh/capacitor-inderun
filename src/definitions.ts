@@ -8,8 +8,15 @@ import type {
   TaskResult
 } from "@independo/inderun-contracts";
 
+/**
+ * Bootstrap options for the OpenAI-compatible cloud provider.
+ *
+ * One target is registered per entry in `models`, with id `openai:<model>` (for example
+ * `openai:gpt-5.2`) on every platform — the id a model profile lists and the
+ * `providerId` that results, errors and provenance report. At least one model is required.
+ */
 export interface OpenAIProviderBootstrapOptions {
-  model: string;
+  models: string[];
   endpointUrl?: string;
   auth?: "authContextRef" | "none";
   authContextRef?: string;
@@ -58,6 +65,17 @@ export interface OnnxProviderBootstrapOptions {
 
 export interface ConfigureOptions {
   openAI?: OpenAIProviderBootstrapOptions;
+  /**
+   * Named model profiles: a profile name mapped to an ordered list of target ids
+   * (`openai:gpt-5.2`, or an on-device provider's id). A request opts in with
+   * `TaskRequest.modelProfile`; routing then stays within that list, in that order after
+   * placement constraints. Omitted, every request routes within the built-in `auto` profile —
+   * every registered target — and naming any other profile fails the request.
+   *
+   * `auto` cannot be redefined, and a profile must list at least one target, each once;
+   * `configure()` rejects a configuration that breaks either rule.
+   */
+  modelProfiles?: Record<string, string[]>;
   /** Web only; native registers its own on-device provider. */
   systemModel?: SystemModelProviderBootstrapOptions;
   /** Web only; native registers its own on-device provider. */
@@ -129,6 +147,12 @@ export interface StreamRun {
  */
 export interface ProviderDescriptor {
   id: string;
+  /**
+   * The model this target is bound to, as the provider names it. Absent when the provider
+   * cannot name one — a platform-managed on-device model reports nothing rather than a
+   * guessed weight name.
+   */
+  model?: string;
   type: "local" | "edge" | "cloud";
   transport: "in_process" | "system_service" | "http" | "sse" | "realtime";
   streamingStyle?: "tokens" | "chunks" | "snapshots";
