@@ -8,8 +8,15 @@ import type {
   TaskResult
 } from "@independo/inderun-contracts";
 
+/**
+ * Bootstrap options for the OpenAI-compatible cloud provider.
+ *
+ * One target is registered per entry in `models`, with id `openai:<model>` (for example
+ * `openai:gpt-5.2`) on every platform — the id a model profile lists and the
+ * `providerId` that results, errors and provenance report. At least one model is required.
+ */
 export interface OpenAIProviderBootstrapOptions {
-  model: string;
+  models: string[];
   endpointUrl?: string;
   auth?: "authContextRef" | "none";
   authContextRef?: string;

@@ -49,7 +49,7 @@ export function buildConfigureOptions(choice: BootstrapChoice): ConfigureOptions
   if (choice.cloud) {
     const endpointUrl = choice.endpointUrl.trim();
     options.openAI = {
-      model: choice.model.trim() || DEFAULT_MODEL,
+      models: [choice.model.trim() || DEFAULT_MODEL],
       // No credentials in this app, ever: the proxy holds them.
       auth: "none",
       ...(endpointUrl.length > 0 ? { endpointUrl } : {})

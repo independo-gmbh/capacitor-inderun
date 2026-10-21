@@ -1,6 +1,7 @@
 import type { StreamRunHandle, TaskResult } from "@independo/inderun-contracts";
 import { WebPlugin } from "@capacitor/core";
-import { createIndeRunWeb, createUnavailable, toIndeRunException } from "@independo/inderun-web";
+import { createIndeRunWeb, toIndeRunException } from "@independo/inderun-web";
+import { createUnavailable } from "@independo/inderun-web/provider";
 import type {
   CancelStreamOptions,
   CheckCapabilitiesResult,
@@ -180,7 +181,7 @@ type WebOpenAIOptions = NonNullable<CreateIndeRunWebOptions["openAI"]>;
  */
 function compactOpenAIOptions(openAI: NonNullable<ConfigureOptions["openAI"]>): WebOpenAIOptions {
   const result: WebOpenAIOptions = {
-    model: openAI.model
+    models: openAI.models
   };
 
   if (openAI.endpointUrl !== undefined) {

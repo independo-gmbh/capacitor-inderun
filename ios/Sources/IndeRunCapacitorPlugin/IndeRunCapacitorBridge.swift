@@ -10,8 +10,11 @@ import IndeRunContracts
 import IndeRunOpenAIProviders
 import IndeRunSwift
 
+/// One OpenAI-compatible target is registered per entry in `models`, with id
+/// `openai:<model>` -- the id scheme the web SDK and the upstream factories use, so a
+/// model profile names the same targets on every platform.
 struct OpenAIProviderBootstrapOptions: Codable {
-    let model: String
+    let models: [String]
     let endpointURL: String?
     let auth: String?
     let authContextRef: String?
@@ -23,7 +26,7 @@ struct OpenAIProviderBootstrapOptions: Codable {
     // this mapping the field silently decodes as nil and the provider falls back to the
     // default endpoint.
     enum CodingKeys: String, CodingKey {
-        case model
+        case models
         case endpointURL = "endpointUrl"
         case auth
         case authContextRef
@@ -217,23 +220,27 @@ final class IndeRunCapacitorBridge {
         )
     }
 
-    private func makeRegistry(openAI: OpenAIProviderBootstrapOptions?) throws -> ProviderRegistry {
+    func makeRegistry(openAI: OpenAIProviderBootstrapOptions?) throws -> ProviderRegistry {
         let registry = ProviderRegistry()
         try registry.register(AppleFoundationModelsProvider())
 
         if let openAI {
-            try registry.register(
-                OpenAIProvider(
-                    options: OpenAIProviderOptions(
-                        id: "openai",
-                        model: openAI.model,
-                        endpointURL: openAI.endpointURL ?? defaultOpenAIResponsesEndpoint,
-                        auth: mapAuthMode(openAI.auth),
-                        authContextRef: openAI.authContextRef,
-                        timeoutMs: openAI.timeoutMs
-                    )
-                )
+            // Upstream's `makeOpenAIRegistry` builds a registry of its own, while this one
+            // also carries the on-device provider; `providerOptions(model:)` is the shared
+            // half, so the target ids cannot drift from the factory's.
+            guard !openAI.models.isEmpty else {
+                throw createInternal(message: "Capacitor openAI bootstrap requires models to list at least one model.")
+            }
+            let factory = OpenAIFactoryOptions(
+                models: openAI.models,
+                endpointURL: openAI.endpointURL ?? defaultOpenAIResponsesEndpoint,
+                auth: mapAuthMode(openAI.auth),
+                authContextRef: openAI.authContextRef,
+                timeoutMs: openAI.timeoutMs
             )
+            for model in openAI.models {
+                try registry.register(OpenAIProvider(options: factory.providerOptions(model: model)))
+            }
         }
 
         return registry

@@ -7,8 +7,8 @@ import app.independo.inderun.core.toIndeRunException
 import app.independo.inderun.providers.mlkit.AndroidProviderRegistryFactory
 import app.independo.inderun.providers.openai.DEFAULT_OPENAI_RESPONSES_ENDPOINT
 import app.independo.inderun.providers.openai.OpenAIAuthMode
+import app.independo.inderun.providers.openai.OpenAIFactoryOptions
 import app.independo.inderun.providers.openai.OpenAIProvider
-import app.independo.inderun.providers.openai.OpenAIProviderOptions
 import app.independo.inderun.sdk.IndeRun
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -246,18 +246,20 @@ class IndeRunCapacitorPlugin : Plugin() {
         val registry = AndroidProviderRegistryFactory.makeDefaultRegistry(context.applicationContext)
 
         if (openAI != null) {
-            registry.register(
-                OpenAIProvider(
-                    OpenAIProviderOptions(
-                        id = "openai",
-                        model = openAI.model,
-                        endpointUrl = openAI.endpointUrl ?: DEFAULT_OPENAI_RESPONSES_ENDPOINT,
-                        auth = if (openAI.auth == "none") OpenAIAuthMode.none else OpenAIAuthMode.authContextRef,
-                        authContextRef = openAI.authContextRef,
-                        timeoutMs = openAI.timeoutMs
-                    )
-                )
+            // Upstream's makeOpenAIRegistry builds a registry of its own, while this one also
+            // carries the on-device provider; providerOptions(model) is the shared half, so the
+            // target ids cannot drift from the factory's.
+            require(openAI.models.isNotEmpty()) {
+                "Capacitor openAI bootstrap requires models to list at least one model."
+            }
+            val factory = OpenAIFactoryOptions(
+                models = openAI.models,
+                endpointUrl = openAI.endpointUrl ?: DEFAULT_OPENAI_RESPONSES_ENDPOINT,
+                auth = if (openAI.auth == "none") OpenAIAuthMode.none else OpenAIAuthMode.authContextRef,
+                authContextRef = openAI.authContextRef,
+                timeoutMs = openAI.timeoutMs
             )
+            openAI.models.forEach { model -> registry.register(OpenAIProvider(factory.providerOptions(model))) }
         }
 
         return registry

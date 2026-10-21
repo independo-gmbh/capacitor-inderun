@@ -36,8 +36,13 @@ import com.getcapacitor.JSObject
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * One OpenAI-compatible target is registered per entry in [models], with id `openai:<model>` --
+ * the id scheme the web SDK and the upstream factories use, so a model profile names the same
+ * targets on every platform.
+ */
 data class OpenAIProviderBootstrapOptions(
-    val model: String,
+    val models: List<String>,
     val endpointUrl: String? = null,
     val auth: String? = null,
     val authContextRef: String? = null,
@@ -310,7 +315,7 @@ object IndeRunSerializer {
 
     private fun parseOpenAIOptions(json: JSONObject): OpenAIProviderBootstrapOptions {
         return OpenAIProviderBootstrapOptions(
-            model = json.getString("model"),
+            models = json.getJSONArray("models").toStringList(),
             endpointUrl = json.optStringOrNull("endpointUrl"),
             auth = json.optStringOrNull("auth"),
             authContextRef = json.optStringOrNull("authContextRef"),

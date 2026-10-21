@@ -11,7 +11,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
     func testDecodesConfigureOptionsWithOpenAI() throws {
         let json: [String: Any] = [
             "openAI": [
-                "model": "gpt-5.2",
+                "models": ["gpt-5.2"],
                 "endpointUrl": "/api/inderun/openai-responses",
                 "auth": "none",
                 "authContextRef": "openai/main",
@@ -21,7 +21,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         let data = try JSONSerialization.data(withJSONObject: json)
         let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
 
-        XCTAssertEqual(options.openAI?.model, "gpt-5.2")
+        XCTAssertEqual(options.openAI?.models, ["gpt-5.2"])
         XCTAssertEqual(options.openAI?.endpointURL, "/api/inderun/openai-responses")
         XCTAssertEqual(options.openAI?.auth, "none")
         XCTAssertEqual(options.openAI?.authContextRef, "openai/main")
@@ -36,7 +36,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
     func testDecodesEndpointUrlUsingTheTypeScriptWireKey() throws {
         let json: [String: Any] = [
             "openAI": [
-                "model": "gpt-5.2",
+                "models": ["gpt-5.2"],
                 "endpointUrl": "https://proxy.example/api/openai-responses"
             ]
         ]
@@ -49,7 +49,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
     func testIgnoresTheLegacySwiftCasedEndpointKey() throws {
         let json: [String: Any] = [
             "openAI": [
-                "model": "gpt-5.2",
+                "models": ["gpt-5.2"],
                 "endpointURL": "https://proxy.example/api/openai-responses"
             ]
         ]
@@ -68,11 +68,11 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
     }
 
     func testDecodesOpenAIOptionsWithOnlyRequiredFields() throws {
-        let json: [String: Any] = ["openAI": ["model": "gpt-4"]]
+        let json: [String: Any] = ["openAI": ["models": ["gpt-4"]]]
         let data = try JSONSerialization.data(withJSONObject: json)
         let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
 
-        XCTAssertEqual(options.openAI?.model, "gpt-4")
+        XCTAssertEqual(options.openAI?.models, ["gpt-4"])
         XCTAssertNil(options.openAI?.endpointURL)
         XCTAssertNil(options.openAI?.auth)
         XCTAssertNil(options.openAI?.authContextRef)
@@ -92,15 +92,39 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
     /// ignore them rather than fail to decode the options object that carries them.
     func testIgnoresTheWebOnlyProviderBootstrapKeys() throws {
         let json: [String: Any] = [
-            "openAI": ["model": "gpt-5.2", "auth": "none"],
+            "openAI": ["models": ["gpt-5.2"], "auth": "none"],
             "systemModel": ["id": "local.system-model.web", "timeoutMs": 30_000],
             "onnx": ["modelPackage": ["id": "demo", "format": "onnx"]]
         ]
         let data = try JSONSerialization.data(withJSONObject: json)
         let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
 
-        XCTAssertEqual(options.openAI?.model, "gpt-5.2")
+        XCTAssertEqual(options.openAI?.models, ["gpt-5.2"])
         XCTAssertEqual(options.openAI?.auth, "none")
+    }
+
+    // MARK: - makeRegistry(openAI:)
+
+    func testRegistersOneOpenAITargetPerModel() throws {
+        let json: [String: Any] = ["openAI": ["models": ["gpt-5.2", "gpt-5-mini"], "auth": "none"]]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
+
+        let registry = try IndeRunCapacitorBridge().makeRegistry(openAI: options.openAI)
+        let ids = Set(registry.list().map { $0.describe().id })
+
+        XCTAssertTrue(ids.contains("openai:gpt-5.2"))
+        XCTAssertTrue(ids.contains("openai:gpt-5-mini"))
+        XCTAssertFalse(ids.contains("openai"))
+        XCTAssertEqual(registry.get(id: "openai:gpt-5-mini")?.describe().model, "gpt-5-mini")
+    }
+
+    func testRejectsAnOpenAIBootstrapWithoutModels() throws {
+        let json: [String: Any] = ["openAI": ["models": [String]()]]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
+
+        XCTAssertThrowsError(try IndeRunCapacitorBridge().makeRegistry(openAI: options.openAI))
     }
 
     // MARK: - encode(error:)
@@ -111,6 +135,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
             details: nil,
             errorClass: .Unavailable,
             message: "Not configured.",
+            provenance: nil,
             providerId: nil,
             retryable: nil,
             retryAfterMs: nil,
@@ -135,6 +160,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
             details: nil,
             errorClass: .RateLimited,
             message: "Too many requests.",
+            provenance: nil,
             providerId: "openai",
             retryable: true,
             retryAfterMs: 2_000,
@@ -174,6 +200,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
             ],
             errorClass: .CapabilityMismatch,
             message: "No eligible provider can stream this request.",
+            provenance: nil,
             providerId: nil,
             retryable: nil,
             retryAfterMs: nil,
