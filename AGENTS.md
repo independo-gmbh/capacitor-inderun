@@ -74,6 +74,11 @@
   the monorepo's npm packages; that was already untrue in practice (this package reached 1.0.0
   against `inderun` 0.2.2) and pinning two independently released artifacts to one number made
   neither version mean anything. It has been dropped rather than quietly broken again.
+- A `BREAKING CHANGE:` footer releases a **minor**, not a major, while `inderun` is pre-1.0 —
+  the monorepo's own rule, mirrored in `release.config.cjs`. The bridge's breaks follow inderun's
+  0.x API churn; one major per inderun minor would leave the bridge's major meaning nothing. Commits
+  still carry the footer, so the release notes call the break out. Flip the rule back to `"major"`
+  when `inderun` reaches 1.0.
 - State the supported `inderun` version in `README.md` instead, and bump every platform's pin in one
   go — a partial bump is how the three platforms drift apart.
 - Pin `inderun` **exactly** in `package.json` and `android/build.gradle.kts`, and constrain it in

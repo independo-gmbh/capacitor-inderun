@@ -57,7 +57,9 @@ final class IndeRunCapacitorStreamPumpTests: XCTestCase {
     private func cancelledTerminal(_ sequence: Int) -> StreamEvent {
         StreamEvent(
             payload: Payload(
-                terminalOutcome: .cancelled(runId: "run_1", partialText: "part", reason: "stopped")
+                terminalOutcome: .cancelled(
+                        runId: "run_1", partialText: "part", reason: "stopped", provenance: sampleProvenance()
+                    )
             ),
             runId: "run_1",
             schemaVersion: .the10,
@@ -152,7 +154,9 @@ final class IndeRunCapacitorStreamPumpTests: XCTestCase {
             capture?.yield(
                 StreamEvent(
                     payload: Payload(
-                        terminalOutcome: .cancelled(runId: "run_1", partialText: "chunk0", reason: "stopped")
+                        terminalOutcome: .cancelled(
+                        runId: "run_1", partialText: "chunk0", reason: "stopped", provenance: sampleProvenance()
+                    )
                     ),
                     runId: "run_1",
                     schemaVersion: .the10,

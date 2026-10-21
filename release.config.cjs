@@ -27,7 +27,12 @@ const plugins = [
     "@semantic-release/commit-analyzer",
     {
       releaseRules: [
-        { breaking: true, release: "major" },
+        // Breaking changes cut a minor while the inderun SDKs this bridge wraps are pre-1.0, the
+        // same rule the monorepo applies to itself. The bridge's breaks track inderun's 0.x API
+        // churn, and a major per inderun minor would make the bridge's own major meaningless.
+        // `BREAKING CHANGE:` footers still put the break under its own heading in the notes.
+        // Flip this back to "major" when inderun reaches 1.0.
+        { breaking: true, release: "minor" },
         { type: "revert", scope: "*", release: "patch" },
         { type: "docs", scope: "*", release: "patch" },
         { type: "style", scope: "*", release: "patch" },

@@ -92,13 +92,13 @@ supports 15.0"*.
 
 ## Supported IndeRun Version
 
-This release tracks **IndeRun 0.3.3** on all three platforms:
+This release tracks **IndeRun 0.4.0** on all three platforms:
 
 | Platform | Artifact | Constraint |
 |----------|----------|------------|
-| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.3.3` (exact) |
-| iOS      | `inderun` SwiftPM package | `>=0.3.3 <0.4.0` |
-| Android  | `app.independo.inderun:inderun-*` | `0.3.3` (exact) |
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.4.0` (exact) |
+| iOS      | `inderun` SwiftPM package | `>=0.4.0 <0.5.0` |
+| Android  | `app.independo.inderun:inderun-*` | `0.4.0` (exact) |
 
 The npm and Gradle pins are exact and all three are bumped together — a partial bump is how the
 platforms drift apart. The SwiftPM constraint is ranged rather than exact so an app that also depends
@@ -116,7 +116,7 @@ import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 
 const inderun = createIndeRunCapacitor({
   openAI: {
-    model: "gpt-5.2",
+    models: ["gpt-5.2"],
     endpointUrl: "/api/inderun/openai-responses",
     auth: "none"
   }
@@ -129,6 +129,45 @@ const result = await inderun.run({
   constraints: { privacy: "cloud_required" }
 });
 ```
+
+`openAI.models` registers one OpenAI-compatible target per model, with id `openai:<model>`
+(`openai:gpt-5.2` above) on every platform. That id is the `providerId` results, errors and
+telemetry report, so code that compares provider ids must expect it rather than `openai`.
+
+## Model Profiles and Provenance
+
+`modelProfiles` names ordered lists of targets, and a request opts into one with
+`modelProfile`. Routing then stays within that list, in that order, after placement
+constraints such as `privacy`. Without a `modelProfile` — or with `"auto"`, which cannot be
+redefined — every registered target is eligible; naming a profile that was not configured
+fails the request.
+
+```ts
+const inderun = createIndeRunCapacitor({
+  openAI: { models: ["gpt-5.2", "gpt-5-mini"], endpointUrl: "/api/inderun/openai-responses", auth: "none" },
+  modelProfiles: {
+    smart: ["openai:gpt-5.2"],
+    fast: ["openai:gpt-5-mini"]
+  }
+});
+
+const result = await inderun.run({
+  schemaVersion: "1.0",
+  task: { kind: "text_to_text" },
+  prompt: "Summarize why a thin bridge matters.",
+  modelProfile: "fast"
+});
+
+result.provenance; // { providerId: "openai:gpt-5-mini", locality: "cloud", attempts: [...], ... }
+```
+
+Profiles list target ids, so an on-device provider can appear in one too; its id differs per
+platform. `checkCapabilities()` lists the ids registered on the current one.
+
+Every `TaskResult`, `IndeRunError` and terminal stream event carries `provenance`: where the run
+executed (`providerId`, `locality`), the model the target is configured with and, when the
+backend names one, the model that served it, plus every attempt and every route rejection. Read
+it rather than `telemetry.providerUsed` to show users where their request went.
 
 ## Streaming (Mode 2)
 
@@ -186,7 +225,7 @@ things are specific to reaching them through a bridge:
 > app may attach its own listener to them; renaming one is a breaking change.
 
 The `IndeRunCapacitorPlugin` and `ConfigureOptions` contracts — including the `openAI`,
-`systemModel` and `onnx` bootstrap configs and the `allowDirectOpenAIEndpoint` flag — are
+`systemModel` and `onnx` bootstrap configs, `modelProfiles` and the `allowDirectOpenAIEndpoint` flag — are
 defined and documented in `src/definitions.ts`.
 
 `systemModel`, `onnx` and `allowDirectOpenAIEndpoint` are **web-only** and ignored on iOS
@@ -228,8 +267,8 @@ when the runtime has nothing to add: absence means *inherit the static declarati
   OpenAI-compatible provider, a Web ONNX Runtime provider and a browser system-model provider, but
   only the OpenAI-compatible one declares streaming support — so a `local_required` **stream** in a
   browser is refused at routing time, while a `local_required` **run** can be served on-device.
-- iOS always registers the Apple on-device provider and optionally registers OpenAI when configured.
-- Android always registers the ML Kit on-device provider and optionally registers OpenAI when configured.
+- iOS always registers the Apple on-device provider and optionally one OpenAI target per configured model.
+- Android always registers the ML Kit on-device provider and optionally one OpenAI target per configured model.
 - Keep credentials behind `authContextRef`. That keeps a secret out of the request payload and out
   of source; it does not make a key safe to ship, since anything an installed app or a browser can
   read, someone with that app or browser can read. For a key you own, put it behind a backend you

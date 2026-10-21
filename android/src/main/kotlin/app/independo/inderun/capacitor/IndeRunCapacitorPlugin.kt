@@ -2,13 +2,14 @@ package app.independo.inderun.capacitor
 
 import app.independo.inderun.contracts.IndeRunError
 import app.independo.inderun.core.IndeRunException
+import app.independo.inderun.core.ModelProfiles
 import app.independo.inderun.core.ProviderRegistry
 import app.independo.inderun.core.toIndeRunException
 import app.independo.inderun.providers.mlkit.AndroidProviderRegistryFactory
 import app.independo.inderun.providers.openai.DEFAULT_OPENAI_RESPONSES_ENDPOINT
 import app.independo.inderun.providers.openai.OpenAIAuthMode
+import app.independo.inderun.providers.openai.OpenAIFactoryOptions
 import app.independo.inderun.providers.openai.OpenAIProvider
-import app.independo.inderun.providers.openai.OpenAIProviderOptions
 import app.independo.inderun.sdk.IndeRun
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -26,13 +27,18 @@ import kotlinx.coroutines.launch
 class IndeRunCapacitorPlugin : Plugin() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var configuredRegistry: ProviderRegistry? = null
+    private var configuredModelProfiles = ModelProfiles()
     private val streams = IndeRunStreamRegistry()
 
     @PluginMethod
     fun configure(call: PluginCall) {
         try {
             val options = IndeRunSerializer.parseConfigureOptions(call.data)
+            // Validated before anything is replaced, so a refused configuration leaves the
+            // previous one in place rather than half of each.
+            val modelProfiles = options.modelProfiles?.let(::ModelProfiles) ?: ModelProfiles()
             configuredRegistry = createRegistry(options.openAI)
+            configuredModelProfiles = modelProfiles
             call.resolve()
         } catch (error: IndeRunException) {
             val contractError = error.toContractError()
@@ -64,7 +70,7 @@ class IndeRunCapacitorPlugin : Plugin() {
                     ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling run(request)."))
                 val request = IndeRunSerializer.parseTaskRequest(requestJson)
                 // IndeRun is stateless; new per call is intentional — registry is cached after configure().
-                val result = IndeRun.initialize(context.applicationContext, registry).run(request)
+                val result = IndeRun.initialize(context.applicationContext, registry, configuredModelProfiles).run(request)
                 call.resolve(IndeRunSerializer.encodeTaskResult(result))
             } catch (error: IndeRunException) {
                 val contractError = error.toContractError()
@@ -99,7 +105,7 @@ class IndeRunCapacitorPlugin : Plugin() {
                 val registry = configuredRegistry
                     ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling checkCapabilities()."))
                 // IndeRun is stateless; new per call is intentional — registry is cached after configure().
-                val snapshots = IndeRun.initialize(context.applicationContext, registry).checkCapabilities()
+                val snapshots = IndeRun.initialize(context.applicationContext, registry, configuredModelProfiles).checkCapabilities()
                 call.resolve(IndeRunSerializer.encodeCapabilitySnapshots(snapshots))
             } catch (error: IndeRunException) {
                 val contractError = error.toContractError()
@@ -158,7 +164,7 @@ class IndeRunCapacitorPlugin : Plugin() {
                     ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling stream(request)."))
                 val request = IndeRunSerializer.parseTaskRequest(requestJson)
                 // IndeRun is stateless; new per call is intentional — registry is cached after configure().
-                val streamRun = IndeRun.initialize(context.applicationContext, registry).stream(request)
+                val streamRun = IndeRun.initialize(context.applicationContext, registry, configuredModelProfiles).stream(request)
 
                 val outcome = streams.attach(streamId, streamRun)
                 if (outcome is AttachOutcome.CancelRequested) {
@@ -246,18 +252,20 @@ class IndeRunCapacitorPlugin : Plugin() {
         val registry = AndroidProviderRegistryFactory.makeDefaultRegistry(context.applicationContext)
 
         if (openAI != null) {
-            registry.register(
-                OpenAIProvider(
-                    OpenAIProviderOptions(
-                        id = "openai",
-                        model = openAI.model,
-                        endpointUrl = openAI.endpointUrl ?: DEFAULT_OPENAI_RESPONSES_ENDPOINT,
-                        auth = if (openAI.auth == "none") OpenAIAuthMode.none else OpenAIAuthMode.authContextRef,
-                        authContextRef = openAI.authContextRef,
-                        timeoutMs = openAI.timeoutMs
-                    )
-                )
+            // Upstream's makeOpenAIRegistry builds a registry of its own, while this one also
+            // carries the on-device provider; providerOptions(model) is the shared half, so the
+            // target ids cannot drift from the factory's.
+            require(openAI.models.isNotEmpty()) {
+                "Capacitor openAI bootstrap requires models to list at least one model."
+            }
+            val factory = OpenAIFactoryOptions(
+                models = openAI.models,
+                endpointUrl = openAI.endpointUrl ?: DEFAULT_OPENAI_RESPONSES_ENDPOINT,
+                auth = if (openAI.auth == "none") OpenAIAuthMode.none else OpenAIAuthMode.authContextRef,
+                authContextRef = openAI.authContextRef,
+                timeoutMs = openAI.timeoutMs
             )
+            openAI.models.forEach { model -> registry.register(OpenAIProvider(factory.providerOptions(model))) }
         }
 
         return registry

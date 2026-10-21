@@ -1,6 +1,7 @@
 package app.independo.inderun.capacitor
 
 import app.independo.inderun.contracts.Cloud
+import app.independo.inderun.contracts.ExecutionProvenance
 import app.independo.inderun.contracts.FinishReason
 import app.independo.inderun.contracts.Generation
 import app.independo.inderun.contracts.IndeRunError
@@ -36,8 +37,13 @@ import com.getcapacitor.JSObject
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * One OpenAI-compatible target is registered per entry in [models], with id `openai:<model>` --
+ * the id scheme the web SDK and the upstream factories use, so a model profile names the same
+ * targets on every platform.
+ */
 data class OpenAIProviderBootstrapOptions(
-    val model: String,
+    val models: List<String>,
     val endpointUrl: String? = null,
     val auth: String? = null,
     val authContextRef: String? = null,
@@ -45,13 +51,16 @@ data class OpenAIProviderBootstrapOptions(
 )
 
 data class RunOptions(
-    val openAI: OpenAIProviderBootstrapOptions? = null
+    val openAI: OpenAIProviderBootstrapOptions? = null,
+    /** Profile name to ordered target ids, as `ModelProfiles` takes it. */
+    val modelProfiles: Map<String, List<String>>? = null
 )
 
 object IndeRunSerializer {
     fun parseConfigureOptions(json: JSONObject): RunOptions {
         return RunOptions(
-            openAI = json.optJSONObject("openAI")?.let(::parseOpenAIOptions)
+            openAI = json.optJSONObject("openAI")?.let(::parseOpenAIOptions),
+            modelProfiles = json.optJSONObject("modelProfiles")?.let(::parseModelProfiles)
         )
     }
 
@@ -61,6 +70,7 @@ object IndeRunSerializer {
             constraints = json.optJSONObject("constraints")?.let(::parseConstraints),
             generation = json.optJSONObject("generation")?.let(::parseGeneration),
             messages = json.optJSONArray("messages")?.let(::parseMessages),
+            modelProfile = json.optStringOrNull("modelProfile"),
             preferences = json.optJSONObject("preferences")?.let(::parsePreferences),
             prompt = json.optStringOrNull("prompt"),
             requestId = json.optStringOrNull("requestId"),
@@ -100,6 +110,7 @@ object IndeRunSerializer {
                     }
                 )
             }
+            result.provenance?.let { put("provenance", encodeProvenance(it)) }
         }
     }
 
@@ -113,6 +124,53 @@ object IndeRunSerializer {
             error.retryAfterMs?.let { put("retryAfterMs", it) }
             error.runId?.let { put("runId", it) }
             error.details?.let { put("details", JSONObject(it)) }
+            error.provenance?.let { put("provenance", encodeProvenance(it)) }
+        }
+    }
+
+    /**
+     * Wire encoding for the `ExecutionProvenance` carried on results, errors and terminal
+     * stream events. Optional fields are omitted rather than written as null: an absent
+     * `providerId` means no provider was attributed, and an absent `reportedModel` means the
+     * backend named none -- a null would be a third state the schema does not have.
+     */
+    private fun encodeProvenance(provenance: ExecutionProvenance): JSObject {
+        return JSObject().apply {
+            put("schemaVersion", provenance.schemaVersion.rawValue)
+            put("modelProfile", provenance.modelProfile)
+            provenance.providerId?.let { put("providerId", it) }
+            put("locality", provenance.locality.rawValue)
+            provenance.configuredModel?.let { put("configuredModel", it) }
+            provenance.reportedModel?.let { put("reportedModel", it) }
+            put("fallbackOccurred", provenance.fallbackOccurred)
+            put("attemptCount", provenance.attemptCount)
+            put(
+                "attempts",
+                JSArray().apply {
+                    provenance.attempts.forEach { attempt ->
+                        put(
+                            JSObject().apply {
+                                put("providerId", attempt.providerId)
+                                put("outcome", attempt.outcome.rawValue)
+                                attempt.errorClass?.let { put("errorClass", it.rawValue) }
+                            }
+                        )
+                    }
+                }
+            )
+            put(
+                "routeRejections",
+                JSArray().apply {
+                    provenance.routeRejections.forEach { rejection ->
+                        put(
+                            JSObject().apply {
+                                put("providerId", rejection.providerId)
+                                put("codes", JSArray().apply { rejection.codes.forEach { put(it.rawValue) } })
+                            }
+                        )
+                    }
+                }
+            )
         }
     }
 
@@ -152,6 +210,7 @@ object IndeRunSerializer {
     private fun encodeProviderDescriptor(descriptor: ProviderDescriptor): JSObject {
         return JSObject().apply {
             put("id", descriptor.id)
+            descriptor.model?.let { put("model", it) }
             put("type", descriptor.type.name)
             put("transport", descriptor.transport.name)
             descriptor.streamingStyle?.let { put("streamingStyle", it.name) }
@@ -263,6 +322,7 @@ object IndeRunSerializer {
             payload.error?.let { put("error", encodeStreamPayloadError(it)) }
             payload.partialText?.let { put("partialText", it) }
             payload.reason?.let { put("reason", it) }
+            payload.provenance?.let { put("provenance", encodeProvenance(it)) }
         }
     }
 
@@ -275,6 +335,7 @@ object IndeRunSerializer {
             error.retryable?.let { put("retryable", it) }
             error.retryAfterMs?.let { put("retryAfterMs", it) }
             error.details?.let { put("details", JSONObject(it)) }
+            error.provenance?.let { put("provenance", encodeProvenance(it)) }
         }
     }
 
@@ -310,12 +371,18 @@ object IndeRunSerializer {
 
     private fun parseOpenAIOptions(json: JSONObject): OpenAIProviderBootstrapOptions {
         return OpenAIProviderBootstrapOptions(
-            model = json.getString("model"),
+            models = json.getJSONArray("models").toStringList(),
             endpointUrl = json.optStringOrNull("endpointUrl"),
             auth = json.optStringOrNull("auth"),
             authContextRef = json.optStringOrNull("authContextRef"),
             timeoutMs = json.optLongOrNull("timeoutMs")
         )
+    }
+
+    private fun parseModelProfiles(json: JSONObject): Map<String, List<String>> {
+        return buildMap {
+            json.keys().forEach { name -> put(name, json.getJSONArray(name).toStringList()) }
+        }
     }
 
     private fun parseConstraints(json: JSONObject): TaskRequestConstraints {
