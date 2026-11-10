@@ -1,6 +1,6 @@
 {
-  "inderun": "0.5.0-rc.21",
+  "inderun": "0.5.0",
   "capacitor": "8",
-  "swiftConstraint": "exact",
+  "swiftConstraint": "upToNextMinor",
   "kotlinGradlePlugin": "2.4.21"
 }

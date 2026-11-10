@@ -98,18 +98,18 @@ supports 15.0"*.
 
 ## Supported IndeRun Version
 
-This release tracks <!-- version:inderun-version -->**IndeRun 0.5.0-rc.21**<!-- /version --> on all three platforms:
+This release tracks <!-- version:inderun-version -->**IndeRun 0.5.0**<!-- /version --> on all three platforms:
 
 <!-- version:supported-table -->
 | Platform | Artifact | Constraint |
 |----------|----------|------------|
-| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.5.0-rc.21` (exact) |
-| iOS      | `inderun` SwiftPM package | `0.5.0-rc.21` (exact) |
-| Android  | `app.independo.inderun:inderun-*` | `0.5.0-rc.21` (exact) |
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.5.0` (exact) |
+| iOS      | `inderun` SwiftPM package | `.upToNextMinor(from: "0.5.0")` |
+| Android  | `app.independo.inderun:inderun-*` | `0.5.0` (exact) |
 <!-- /version -->
 
 <!-- version:pin-policy -->
-The npm and Maven pins are exact and bumped together with the SwiftPM pin — a partial bump is how the platforms drift apart. The SwiftPM pin is exact only while the bridge tracks an `inderun` prerelease, because SwiftPM's range operators (`from:`, `.upToNextMinor`) exclude prerelease versions; it returns to a ranged constraint on the stable release.
+The npm and Maven pins are exact and bumped together with the SwiftPM pin — a partial bump is how the platforms drift apart. SwiftPM takes the same version as `.upToNextMinor`, so an app that also depends on `inderun` directly can unify its graph.
 <!-- /version -->
 
 This package versions **independently** of the IndeRun monorepo under plain semver — the numbers are

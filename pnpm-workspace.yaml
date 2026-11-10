@@ -14,6 +14,6 @@ overrides:
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  - '@independo/inderun-contracts@0.5.0-rc.21'
-  - '@independo/inderun-route-core-wasm@0.5.0-rc.21'
-  - '@independo/inderun-web@0.5.0-rc.21'
+  - '@independo/inderun-contracts@0.5.0'
+  - '@independo/inderun-route-core-wasm@0.5.0'
+  - '@independo/inderun-web@0.5.0'

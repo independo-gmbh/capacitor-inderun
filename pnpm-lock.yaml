@@ -18,11 +18,11 @@ importers:
         specifier: ^8.0.0
         version: 8.5.3
       '@independo/inderun-contracts':
-        specifier: 0.5.0-rc.21
-        version: 0.5.0-rc.21
+        specifier: 0.5.0
+        version: 0.5.0
       '@independo/inderun-web':
-        specifier: 0.5.0-rc.21
-        version: 0.5.0-rc.21
+        specifier: 0.5.0
+        version: 0.5.0
     devDependencies:
       '@saithodev/semantic-release-backmerge':
         specifier: ^4.0.1
@@ -234,16 +234,16 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@independo/inderun-contracts@0.5.0-rc.21':
-    resolution: {integrity: sha512-sbu2KraYgTpP4BGSQ6J8OD0xvpnWVeDZO3bw41JtvgHSXJFJTS9ZRxXV2rduGr44/+wyNOfJvFScYHexWThSiw==}
+  '@independo/inderun-contracts@0.5.0':
+    resolution: {integrity: sha512-IoldQCZJSgYBsMkA1gwVBsYxufRvpQRh81gwstNtlJK8OY+ZHwnAAvkRBD2ddLQAcN7IIncsvAb9U/PA+byYWw==}
     engines: {node: '>=24'}
 
-  '@independo/inderun-route-core-wasm@0.5.0-rc.21':
-    resolution: {integrity: sha512-sLLuAEO89CyI/xzusY8qkkmsrQfx5xCcQp/9yGCLRGQBGV2KvDh6UKwz7hEoDRo/M6LD7rT9iB7TWuF6UwMAow==}
+  '@independo/inderun-route-core-wasm@0.5.0':
+    resolution: {integrity: sha512-O04iqJU/nXV6Uy2PGogrUZlNylmJ6wUPGqMvco+xpSWXpqekMbx8gSzx0q/CsaHrLfHdXZmkkvpouRY498eNbg==}
     engines: {node: '>=24'}
 
-  '@independo/inderun-web@0.5.0-rc.21':
-    resolution: {integrity: sha512-iPuZ556RJ1EuYRSOjIw/t5PFYvV0vhj90IwBjSoA4oerlSDwxCPuQNZhcHOivBuwyrvTnGaiDr3I5LyeAjiVjw==}
+  '@independo/inderun-web@0.5.0':
+    resolution: {integrity: sha512-tuzIspGESY15VXjmh0+4jh4cG+mpt71Q5wFLkeF7UpfTu6Vv+jR4BFFkpz3xGHg2LjVJZBTbGjbQfA3r3l+46Q==}
     engines: {node: '>=24'}
     peerDependencies:
       '@huggingface/transformers': ^4.0.0
@@ -2461,16 +2461,16 @@ snapshots:
   '@esbuild/win32-x64@0.28.1':
     optional: true
 
-  '@independo/inderun-contracts@0.5.0-rc.21':
+  '@independo/inderun-contracts@0.5.0':
     dependencies:
       ajv: 8.20.0
 
-  '@independo/inderun-route-core-wasm@0.5.0-rc.21': {}
+  '@independo/inderun-route-core-wasm@0.5.0': {}
 
-  '@independo/inderun-web@0.5.0-rc.21':
+  '@independo/inderun-web@0.5.0':
     dependencies:
-      '@independo/inderun-contracts': 0.5.0-rc.21
-      '@independo/inderun-route-core-wasm': 0.5.0-rc.21
+      '@independo/inderun-contracts': 0.5.0
+      '@independo/inderun-route-core-wasm': 0.5.0
 
   '@jridgewell/resolve-uri@3.1.2': {}
 
