@@ -35,6 +35,7 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
       ).toContractError();
     }
 
+    let previous: IndeRun | null;
     try {
       // The SDK's own option type, not a hand-written copy of it: an upstream rename
       // then fails at the type level instead of silently dropping a field. This is
@@ -58,13 +59,19 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
         webOptions.allowDirectOpenAIEndpoint = options.allowDirectOpenAIEndpoint;
       }
 
-      const previous = this.engine;
+      previous = this.engine;
       this.engine = createIndeRunWeb(webOptions);
-      // One engine per configuration: the old one's streams end in their cancelled
-      // terminal and its artifacts are released, as on native.
-      await previous?.close();
     } catch (error) {
       throw toIndeRunException(error).toContractError();
+    }
+
+    // One engine per configuration: the old one's streams end in their cancelled terminal
+    // and its artifacts are released, as on native. Outside the rejecting `try`, because
+    // the new engine is installed by now: the configuration took effect either way.
+    try {
+      await previous?.close();
+    } catch (error) {
+      console.warn("Closing the replaced IndeRun engine failed.", error);
     }
   }
 

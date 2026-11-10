@@ -605,6 +605,24 @@ describe("IndeRunWeb", () => {
       ).resolves.toEqual({ runId: "second" });
     });
 
+    it("resolves configure() when closing the replaced engine fails", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const secondRun = vi.fn().mockResolvedValue({ runId: "second" });
+      createIndeRunWebMock
+        .mockReturnValueOnce({ close: vi.fn().mockRejectedValue(new Error("close blew up")) })
+        .mockReturnValueOnce({ run: secondRun, close: vi.fn() });
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+
+      // The new engine is installed, so the configuration took effect.
+      await expect(plugin.configure({ openAI: { models: ["gpt-5.2"] } })).resolves.toBeUndefined();
+      await expect(
+        plugin.run({ schemaVersion: "1.0", task: { kind: "text_to_text" }, prompt: "Hello" })
+      ).resolves.toEqual({ runId: "second" });
+      expect(warn).toHaveBeenCalledOnce();
+      warn.mockRestore();
+    });
+
     it("keeps the previous engine when a new configuration is refused", async () => {
       const close = vi.fn();
       createIndeRunWebMock.mockReturnValue({ close });
@@ -720,6 +738,21 @@ describe("IndeRunWeb", () => {
       });
       const passed = await inderun.readArtifact({ artifactId: "artifact_1" });
       expect(passed.bytes).toStrictEqual(new Uint8Array([9]));
+    });
+
+    it("rejects a chunk without bytes as a bridge error rather than passing undefined on", async () => {
+      createIndeRunWebMock.mockReturnValue({
+        readArtifact: vi
+          .fn()
+          .mockResolvedValue({ artifactId: "artifact_1", offset: 0, totalBytes: 4, done: true }),
+        close: vi.fn()
+      });
+      const inderun = createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } });
+
+      await expect(inderun.readArtifact({ artifactId: "artifact_1" })).rejects.toMatchObject({
+        schemaVersion: "1.0",
+        errorClass: "Internal"
+      });
     });
 
     it("does not configure an instance just to close it", async () => {

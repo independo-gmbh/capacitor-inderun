@@ -12,6 +12,7 @@ import app.independo.inderun.providers.openai.OpenAIAuthMode
 import app.independo.inderun.providers.openai.OpenAIFactoryOptions
 import app.independo.inderun.providers.openai.OpenAIProvider
 import app.independo.inderun.sdk.IndeRun
+import android.util.Log
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -54,7 +55,15 @@ class IndeRunCapacitorPlugin : Plugin() {
             val registry = createRegistry(options.openAI)
             val previous = engine.getAndSet(IndeRun.initialize(context.applicationContext, registry, modelProfiles))
             scope.launch {
-                previous?.close()
+                try {
+                    previous?.close()
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    // The new engine is already installed, so the configuration took effect:
+                    // a failure to close the old one is reported, not turned into a rejection.
+                    Log.w(LOG_TAG, "Closing the replaced IndeRun engine failed.", error)
+                }
                 call.resolve()
             }
         } catch (error: IndeRunException) {
@@ -261,9 +270,11 @@ class IndeRunCapacitorPlugin : Plugin() {
     @PluginMethod
     fun readArtifact(call: PluginCall) {
         val requestJson = call.data
+        // Read on the plugin call, like configure's swap, so a later configure cannot redirect it.
+        val target = engine.get()
         scope.launch {
             try {
-                val engine = requireEngine("readArtifact(request)")
+                val engine = requireEngine(target, "readArtifact(request)")
                 val chunk = engine.readArtifact(IndeRunSerializer.parseArtifactReadRequest(requestJson))
                 call.resolve(IndeRunSerializer.encodeArtifactChunk(chunk))
             } catch (error: CancellationException) {
@@ -277,9 +288,10 @@ class IndeRunCapacitorPlugin : Plugin() {
     @PluginMethod
     fun disposeArtifact(call: PluginCall) {
         val artifactJson = call.data
+        val target = engine.get()
         scope.launch {
             try {
-                val engine = requireEngine("disposeArtifact(artifact)")
+                val engine = requireEngine(target, "disposeArtifact(artifact)")
                 engine.disposeArtifact(IndeRunSerializer.parseMediaArtifact(artifactJson))
                 call.resolve()
             } catch (error: CancellationException) {
@@ -297,9 +309,11 @@ class IndeRunCapacitorPlugin : Plugin() {
      */
     @PluginMethod
     fun close(call: PluginCall) {
+        // Read on the plugin call: a configure that follows must not have its new engine closed.
+        val target = engine.get()
         scope.launch {
             try {
-                engine.get()?.close()
+                target?.close()
                 call.resolve()
             } catch (error: CancellationException) {
                 throw error
@@ -320,7 +334,9 @@ class IndeRunCapacitorPlugin : Plugin() {
     }
 
     /** The configured engine, closed or not: a closed one answers each call the way upstream defines. */
-    private fun requireEngine(call: String): IndeRun = engine.get()
+    private fun requireEngine(call: String): IndeRun = requireEngine(engine.get(), call)
+
+    private fun requireEngine(target: IndeRun?, call: String): IndeRun = target
         ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling $call."))
 
     private fun contractErrorFor(error: Throwable): IndeRunError = when (error) {
@@ -361,3 +377,5 @@ class IndeRunCapacitorPlugin : Plugin() {
         return registry
     }
 }
+
+private const val LOG_TAG = "IndeRunCapacitor"

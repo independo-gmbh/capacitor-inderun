@@ -1,4 +1,5 @@
 import type { ArtifactChunk, BridgedArtifactChunk } from "./definitions.js";
+import { createBridgeError } from "./errors.js";
 
 /**
  * Turns the `readArtifact` result the plugin resolved back into the contract's
@@ -7,10 +8,18 @@ import type { ArtifactChunk, BridgedArtifactChunk } from "./definitions.js";
  * rather than encoded and decoded for nothing.
  */
 export function decodeArtifactChunk(chunk: BridgedArtifactChunk): ArtifactChunk {
+  // Whatever native resolved is untyped at runtime; a chunk without bytes is a transport
+  // fault, reported like a malformed stream handle rather than passed on as `undefined`.
+  const bytes: unknown = chunk.bytes;
+  if (typeof bytes !== "string" && !(bytes instanceof Uint8Array)) {
+    throw createBridgeError(
+      "Capacitor bridge received an ArtifactChunk without bytes from the native plugin."
+    );
+  }
   return {
     artifactId: chunk.artifactId,
     offset: chunk.offset,
-    bytes: typeof chunk.bytes === "string" ? decodeBase64(chunk.bytes) : chunk.bytes,
+    bytes: typeof bytes === "string" ? decodeBase64(bytes) : bytes,
     totalBytes: chunk.totalBytes,
     done: chunk.done
   };
