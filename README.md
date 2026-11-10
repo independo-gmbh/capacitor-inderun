@@ -505,7 +505,7 @@ things are specific to reaching them through a bridge:
 Each `configure()` builds **one engine** that every later call uses until the next `configure()`.
 Artifacts belong to that engine, and a provider that loads a model keeps it loaded there, which is
 why it is not rebuilt per call. A new `configure()` replaces the engine and closes the previous one
-(see `close()` above), then releases the speech providers and loaded models the plugin built for it,
+(see `close()` above), then releases the speech providers, ONNX text providers and loaded models the plugin built for it,
 resolving once both have finished; a configuration that fails validation leaves the previous engine
 in place. Plugin teardown does the same without waiting. The native plugin holds one engine at a time, so
 handles that configure differently replace each other's engine.

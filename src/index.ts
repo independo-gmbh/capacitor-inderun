@@ -51,8 +51,10 @@ import { startCapacitorPrepare, startCapacitorStream } from "./streaming.js";
 /**
  * The web SDK's speech facade, loaded on first use. A static import of the package root would
  * put the whole web engine and its WASM route-core loader into every native app's initial
- * bundle — this module is loaded on iOS and Android too — and the package exports no subpath
- * for the facade alone. The facade only translates options into a `TaskRequest` and reads the
+ * bundle — this module is loaded on iOS and Android too. The package is side-effect free now, so
+ * the facade alone would be small, but the lazy web fallback shares the SDK's modules with it and
+ * a bundler hoists them into the entry's initial chunks (measured at +108 KB raw, with the WASM
+ * loader). The facade only translates options into a `TaskRequest` and reads the
  * result back; everything it calls goes through the `IndeRunApi` it is handed.
  */
 function loadSpeechFacade(): Promise<typeof import("@independo/inderun-web")> {

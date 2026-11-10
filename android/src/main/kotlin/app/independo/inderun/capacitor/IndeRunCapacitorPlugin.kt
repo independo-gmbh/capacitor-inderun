@@ -419,16 +419,16 @@ class IndeRunCapacitorPlugin : Plugin() {
         }
 
         options.onnx?.let { onnx ->
-            // The convenience constructor builds the default runtime, which loads lazily and has
-            // no close, so there is nothing here for the bridge to own.
-            registry.register(
-                AndroidOnnxRuntimeProvider(
-                    appContext,
-                    onnx.modelPackage,
-                    onnx.id ?: AndroidOnnxRuntimeProvider.DEFAULT_ID,
-                    onnx.timeoutMs
-                )
+            // The convenience constructor builds and owns the default runtime, which holds the
+            // loaded session until the provider's close(), so the provider is the bridge's to close.
+            val provider = AndroidOnnxRuntimeProvider(
+                appContext,
+                onnx.modelPackage,
+                onnx.id ?: AndroidOnnxRuntimeProvider.DEFAULT_ID,
+                onnx.timeoutMs
             )
+            owned += provider
+            registry.register(provider)
         }
 
         // Opt-in (ADR 018): the router probes every registered provider on every request, so an
@@ -440,8 +440,8 @@ class IndeRunCapacitorPlugin : Plugin() {
         }
 
         options.neuralSpeech?.forEach { entry ->
-            // One runtime per entry, closed with the configuration: the provider has no close of
-            // its own, and the runtime is what holds the loaded model.
+            // One runtime per entry, closed with the configuration: the provider is handed the
+            // runtime, so it does not own it, and the runtime is what holds the loaded model.
             val runtime = OnnxNeuralSpeechRuntime(appContext)
             owned += runtime
             registry.register(

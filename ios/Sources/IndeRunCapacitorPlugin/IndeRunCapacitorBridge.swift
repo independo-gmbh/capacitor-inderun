@@ -89,12 +89,13 @@ struct CapacitorRunOptions: Decodable {
 /// A registry and what the bridge constructed for it that holds something to release.
 struct BridgedRegistry {
     let registry: ProviderRegistry
-    /// One closer per runtime the bridge built, in registration order.
+    /// One closer per provider or runtime the bridge built that holds a loaded model, in
+    /// registration order.
     let owned: [@Sendable () async -> Void]
 }
 
-/// What one `configure` built: the engine every call uses, and the providers' runtimes the bridge
-/// constructed for its registry.
+/// What one `configure` built: the engine every call uses, and the providers and runtimes the
+/// bridge constructed for its registry.
 ///
 /// Upstream's `close()` closes no provider and no runtime: the registry is the application's,
 /// and whoever creates a thing closes it. Here the bridge is that application, so closing a
@@ -462,27 +463,29 @@ final class IndeRunCapacitorBridge {
             }
         }
 
-        if let onnx {
-            // The provider builds its own `SystemOnnxGenAiRuntime` when none is passed, loads the
-            // model lazily and has no close; nothing here for the bridge to own.
-            try registry.register(
-                OnnxRuntimeAppleProvider(
+        // Everything built from here holds a model: a throw releases what was built so far.
+        do {
+            if let onnx {
+                // The provider builds and owns a `SystemOnnxGenAiRuntime` (none is passed) and loads
+                // the model lazily; its `close()` releases it, so the provider is the bridge's to close.
+                let provider = OnnxRuntimeAppleProvider(
                     options: OnnxProviderOptions(
                         id: onnx.id ?? OnnxRuntimeAppleProvider.defaultId,
                         modelPackage: onnx.modelPackage,
                         timeout: onnx.timeoutMs.map { .milliseconds($0) }
                     )
                 )
-            )
-        }
+                // Owned before registering, so a refused registration still closes it.
+                owned.append { await provider.close() }
+                try registry.register(provider)
+            }
 
-        // Opt-in (ADR 018): the router probes every registered provider on every request, so
-        // an app that does not speak should not pay for a voice listing.
-        if let systemSpeech, systemSpeech.enabled {
-            try registry.register(AppleSystemSpeechProvider(id: systemSpeech.id ?? AppleSystemSpeechProvider.defaultId))
-        }
+            // Opt-in (ADR 018): the router probes every registered provider on every request, so
+            // an app that does not speak should not pay for a voice listing.
+            if let systemSpeech, systemSpeech.enabled {
+                try registry.register(AppleSystemSpeechProvider(id: systemSpeech.id ?? AppleSystemSpeechProvider.defaultId))
+            }
 
-        do {
             for entry in neuralSpeech ?? [] {
                 let (provider, close) = try makeNeuralSpeechProvider(entry)
                 // Owned before registering, so a refused registration still closes it.
@@ -497,14 +500,13 @@ final class IndeRunCapacitorBridge {
         return BridgedRegistry(registry: registry, owned: owned)
     }
 
-    /// One provider and its own runtime, closed with the configuration: the provider has no close
-    /// of its own, and the runtime is what holds the loaded model.
+    /// One provider, with the closer that releases its loaded model when the configuration closes.
     ///
-    /// `coreai` composes what `makeCoreAINeuralSpeechProvider(options:)` composes -- the same id
-    /// prefix, a `CoreAINeuralSpeechRuntime` with default options -- rather than calling it,
-    /// because the factory keeps the runtime to itself and the bridge has to close it. Below
-    /// iOS 27, or in a build without the Core AI SDK, the runtime reports itself unavailable and
-    /// routing skips the provider; the bridge does not check the OS.
+    /// `onnx` injects a runtime the bridge builds, so the provider does not own it and the closer
+    /// closes the runtime. `coreai` goes through `makeCoreAINeuralSpeechProvider(options:)`, whose
+    /// provider builds and owns its runtime, so the closer closes the provider. Below iOS 27, or in
+    /// a build without the Core AI SDK, the runtime reports itself unavailable and routing skips
+    /// the provider; the bridge does not check the OS.
     private func makeNeuralSpeechProvider(
         _ entry: NeuralSpeechBootstrapOptions
     ) throws -> (NeuralSpeechProvider, @Sendable () async -> Void) {
@@ -517,16 +519,10 @@ final class IndeRunCapacitorBridge {
             )
             return (provider, { await runtime.close() })
         case "coreai":
-            let runtime = CoreAINeuralSpeechRuntime()
-            let provider = NeuralSpeechProvider(
-                options: NeuralSpeechProviderOptions(
-                    id: entry.id ?? "\(NeuralSpeechProvider.coreAIDefaultId):\(entry.modelPackage.id)",
-                    modelPackage: entry.modelPackage,
-                    runtime: runtime,
-                    timeout: timeout
-                )
+            let provider = makeCoreAINeuralSpeechProvider(
+                options: CoreAINeuralSpeechProviderOptions(id: entry.id, modelPackage: entry.modelPackage, timeout: timeout)
             )
-            return (provider, { await runtime.close() })
+            return (provider, { await provider.close() })
         case let other:
             throw createInternal(message: "\(other) neural speech runtime is not available on this platform")
         }

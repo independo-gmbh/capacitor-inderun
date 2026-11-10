@@ -140,7 +140,48 @@ final class IndeRunCapacitorSpeechTests: XCTestCase {
         let built = try makeRegistry(["onnx": ["modelPackage": textPackage]])
 
         XCTAssertTrue(providerIds(built).contains("local.onnx.genai.apple"))
-        XCTAssertTrue(built.owned.isEmpty)
+        // The provider owns the runtime it built, so the provider is the bridge's to close.
+        XCTAssertEqual(built.owned.count, 1)
+    }
+
+    func testTheOnnxTextProviderIsClosedWithTheNeuralRuntimes() throws {
+        let built = try makeRegistry([
+            "onnx": ["modelPackage": textPackage],
+            "neuralSpeech": [["modelPackage": speechPackage]]
+        ])
+
+        XCTAssertEqual(built.owned.count, 2)
+    }
+
+    func testARefusedRegistrationAfterTheOnnxProviderReleasesIt() throws {
+        let options = try decodeOptions([
+            "onnx": ["modelPackage": textPackage],
+            "neuralSpeech": [["modelPackage": speechPackage, "runtime": "tflite"]]
+        ])
+        var released: [@Sendable () async -> Void] = []
+
+        XCTAssertThrowsError(
+            try IndeRunCapacitorBridge().makeRegistry(
+                openAI: nil,
+                onnx: options.onnx,
+                neuralSpeech: options.neuralSpeech,
+                release: { released = $0 }
+            )
+        )
+        XCTAssertEqual(released.count, 1)
+    }
+
+    func testReconfiguringWithOnnxHandsTheOldTextProviderBackToClose() async throws {
+        let bridge = IndeRunCapacitorBridge()
+        _ = try bridge.configure(options: ["onnx": ["modelPackage": textPackage]])
+
+        let replaced = try XCTUnwrap(try bridge.configure(options: ["onnx": ["modelPackage": textPackage]]))
+        XCTAssertNotNil(replaced.registry?.get(id: "local.onnx.genai.apple"))
+        await replaced.close()
+
+        // Closed once with its configuration; the new one still serves.
+        let providers = try await bridge.checkCapabilities()["providers"] as? [[String: Any]] ?? []
+        XCTAssertTrue(providers.contains { $0["providerId"] as? String == "local.onnx.genai.apple" })
     }
 
     func testRegistersTheOnnxTextProviderUnderAConfiguredId() throws {

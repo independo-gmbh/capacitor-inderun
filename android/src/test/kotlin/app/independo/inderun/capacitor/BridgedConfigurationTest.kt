@@ -7,7 +7,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
- * The bridge closes what it constructed (speech providers, neural runtimes) after the engine,
+ * The bridge closes what it constructed (speech providers, the ONNX text provider, neural runtimes) after the engine,
  * on replace, on close and at teardown. The real providers need an Android `Context`, so these
  * use counting stand-ins for both the engine and the owned resources.
  */
@@ -36,6 +36,20 @@ class BridgedConfigurationTest {
         configuration(log, Resource("system speech", log), Resource("neural runtime", log)).close()
 
         assertEquals(listOf("engine", "system speech", "neural runtime"), log.entries)
+    }
+
+    @Test
+    fun `replacing a configuration releases its ONNX text provider after its engine, not the new one`() = runBlocking {
+        val log = Log()
+        val old = configuration(log, Resource("old onnx text", log), Resource("old neural runtime", log))
+        val replacement = configuration(log, Resource("new onnx text", log))
+
+        // configure() swaps the new configuration in and closes the one it replaced.
+        old.close()
+
+        assertEquals(listOf("engine", "old onnx text", "old neural runtime"), log.entries)
+        replacement.close()
+        assertEquals(listOf("engine", "old onnx text", "old neural runtime", "engine", "new onnx text"), log.entries)
     }
 
     @Test
