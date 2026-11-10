@@ -107,10 +107,24 @@ export function isPending(name) {
 }
 
 /**
+ * Reads the constraint on the inderun package. Only `exact:` and `.upToNextMinor(from:)` are known
+ * spellings; a bare `from:`, `.upToNextMajor` or a range reports what was found instead.
+ */
+export function parseSwiftConstraint(packageSwift) {
+  const rest = packageSwift.match(/inderun\.git",\s*([^\n]*)/)?.[1]?.replace(/\)\s*,?\s*$/, "").trim();
+  if (rest === undefined) return { constraint: "no inderun dependency found" };
+  const exact = rest.match(/^exact:\s*"([^"]+)"$/);
+  if (exact) return { constraint: "exact", version: exact[1] };
+  const minor = rest.match(/^\.upToNextMinor\(from:\s*"([^"]+)"\)$/);
+  if (minor) return { constraint: "upToNextMinor", version: minor[1] };
+  return { constraint: `unsupported requirement \`${rest}\`` };
+}
+
+/**
  * versions.json is the one place a version is written by hand besides the manifests that have to
  * carry it. This returns one message per manifest that disagrees, so a partial bump cannot ship.
  */
-export function versionDrift(v = readVersions()) {
+export function versionDrift(v = readVersions(), packageSwift = read("Package.swift")) {
   const problems = [];
   const expect = (where, actual, wanted) => {
     if (actual !== wanted)
@@ -124,10 +138,9 @@ export function versionDrift(v = readVersions()) {
 
   if (!SWIFT_CONSTRAINTS.includes(v.swiftConstraint))
     problems.push(`versions.json swiftConstraint: ${JSON.stringify(v.swiftConstraint)} is not one of ${SWIFT_CONSTRAINTS.join(", ")}`);
-  const swift = read("Package.swift").match(/inderun\.git",\s*(exact:|from:|\.upToNextMinor\(from:)\s*"([^"]+)"/);
-  expect("Package.swift inderun pin", swift?.[2], v.inderun);
-  const actualConstraint = swift ? (swift[1] === "exact:" ? "exact" : "upToNextMinor") : undefined;
-  expect("Package.swift inderun constraint", actualConstraint, v.swiftConstraint);
+  const swift = parseSwiftConstraint(packageSwift);
+  expect("Package.swift inderun pin", swift.version, v.inderun);
+  expect("Package.swift inderun constraint", swift.constraint, v.swiftConstraint);
 
   const gradle = read("android/build.gradle.kts");
   const artifacts = [...gradle.matchAll(/"app\.independo\.inderun:[a-z-]+:([^"]+)"/g)];
