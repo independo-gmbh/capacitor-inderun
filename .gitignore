@@ -34,3 +34,13 @@ example-app/.env.*
 # minimumReleaseAgeExclude — committing either just creates a second thing to keep in sync.
 example-app/pnpm-lock.yaml
 example-app/pnpm-workspace.yaml
+
+# Local-first starter (unpublished; same isolation as example-app)
+examples/local-first-starter/node_modules/
+examples/local-first-starter/dist/
+examples/local-first-starter/ios/
+examples/local-first-starter/android/
+examples/local-first-starter/.env
+examples/local-first-starter/.env.*
+examples/local-first-starter/pnpm-lock.yaml
+examples/local-first-starter/pnpm-workspace.yaml
