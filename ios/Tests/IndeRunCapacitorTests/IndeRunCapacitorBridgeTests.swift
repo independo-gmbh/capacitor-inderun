@@ -87,20 +87,23 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         XCTAssertEqual(options.allowDirectOpenAIEndpoint, true)
     }
 
-    /// `systemModel` and `onnx` are web-only bootstrap keys, like
-    /// `allowDirectOpenAIEndpoint`. Native registers its own on-device provider, so it must
-    /// ignore them rather than fail to decode the options object that carries them.
-    func testIgnoresTheWebOnlyProviderBootstrapKeys() throws {
+    /// `systemModel` is a web-only bootstrap key, like `allowDirectOpenAIEndpoint`. Native
+    /// registers its own on-device provider, so it must ignore it rather than fail to decode the
+    /// options object that carries it. `onnx` is not web-only: it decodes on native.
+    func testIgnoresTheWebOnlyProviderBootstrapKeysAndDecodesOnnx() throws {
         let json: [String: Any] = [
             "openAI": ["models": ["gpt-5.2"], "auth": "none"],
             "systemModel": ["id": "local.system-model.web", "timeoutMs": 30_000],
-            "onnx": ["modelPackage": ["id": "demo", "format": "onnx"]]
+            "onnx": ["modelPackage": ["id": "demo", "format": "onnx"], "id": "text.demo", "timeoutMs": 5_000]
         ]
         let data = try JSONSerialization.data(withJSONObject: json)
         let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
 
         XCTAssertEqual(options.openAI?.models, ["gpt-5.2"])
         XCTAssertEqual(options.openAI?.auth, "none")
+        XCTAssertEqual(options.onnx?.modelPackage.id, "demo")
+        XCTAssertEqual(options.onnx?.id, "text.demo")
+        XCTAssertEqual(options.onnx?.timeoutMs, 5_000)
     }
 
     // MARK: - makeRegistry(openAI:)
@@ -110,7 +113,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         let data = try JSONSerialization.data(withJSONObject: json)
         let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
 
-        let registry = try IndeRunCapacitorBridge().makeRegistry(openAI: options.openAI)
+        let registry = try IndeRunCapacitorBridge().makeRegistry(openAI: options.openAI).registry
         let ids = Set(registry.list().map { $0.describe().id })
 
         XCTAssertTrue(ids.contains("openai:gpt-5.2"))
@@ -277,35 +280,37 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
 
     private func makeSnapshot(
         providerId: String,
-        type: ProviderDescriptor.ProviderType,
-        transport: ProviderDescriptor.TransportType,
-        streamingStyle: ProviderDescriptor.StreamingStyle? = nil,
+        type: ProviderType,
+        transport: ProviderTransport,
+        streamingStyle: StreamingStyle? = nil,
         streaming: Bool,
-        cancel: ProviderDescriptor.CancelSemantics,
-        limits: ProviderDescriptor.ResourceLimits? = nil,
-        privacy: ProviderDescriptor.PrivacyDescriptor? = nil,
+        cancel: CancelSemantics,
+        limits: ProviderLimits? = nil,
+        privacy: ProviderPrivacy? = nil,
         capabilities: ProviderDynamicCapabilities
     ) -> ProviderCapabilitySnapshot {
         ProviderCapabilitySnapshot(
             providerId: providerId,
             descriptor: ProviderDescriptor(
+                cancel: cancel,
                 id: providerId,
-                type: type,
-                transport: transport,
+                limits: limits,
+                model: nil,
+                privacy: privacy,
                 streamingStyle: streamingStyle,
-                supports: ProviderDescriptor.SupportsCapabilities(
+                supports: ProviderSupports(
+                    multimodal: false,
+                    realtime: false,
+                    reasoningEvents: false,
                     run: true,
                     streaming: streaming,
-                    realtime: false,
-                    tools: false,
-                    reasoningEvents: false,
                     structuredOutput: false,
-                    multimodal: false
+                    tools: false
                 ),
-                cancel: cancel,
+                taskCapabilities: nil,
                 tasks: ["text_to_text"],
-                limits: limits,
-                privacy: privacy
+                transport: transport,
+                type: type
             ),
             capabilities: capabilities
         )
@@ -321,9 +326,9 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
                 streamingStyle: .tokens,
                 streaming: true,
                 cancel: .hard,
-                limits: ProviderDescriptor.ResourceLimits(maxInputTokens: 128_000, maxOutputTokens: 4_096),
-                privacy: ProviderDescriptor.PrivacyDescriptor(dataLeavesDevice: true, regions: ["us"]),
-                capabilities: ProviderDynamicCapabilities(available: true)
+                limits: ProviderLimits(maxAudioSeconds: nil, maxImageBytes: nil, maxInputTokens: 128_000, maxOutputTokens: 4_096),
+                privacy: ProviderPrivacy(dataLeavesDevice: true, regions: ["us"]),
+                capabilities: ProviderDynamicCapabilities(available: true, cancellationAvailable: nil, reason: nil, streamingAvailable: nil, streamingUnavailableReason: nil, taskCapabilities: nil)
             )
         ])
 
@@ -364,7 +369,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
                 transport: .inProcess,
                 streaming: false,
                 cancel: .soft,
-                capabilities: ProviderDynamicCapabilities(available: false, reason: "No model package.")
+                capabilities: ProviderDynamicCapabilities(available: false, cancellationAvailable: nil, reason: "No model package.", streamingAvailable: nil, streamingUnavailableReason: nil, taskCapabilities: nil)
             )
         ])
 
@@ -390,7 +395,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
                 streamingStyle: .snapshots,
                 streaming: true,
                 cancel: .soft,
-                capabilities: ProviderDynamicCapabilities(available: true)
+                capabilities: ProviderDynamicCapabilities(available: true, cancellationAvailable: nil, reason: nil, streamingAvailable: nil, streamingUnavailableReason: nil, taskCapabilities: nil)
             )
         ])
 
@@ -420,9 +425,11 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
                 cancel: .hard,
                 capabilities: ProviderDynamicCapabilities(
                     available: true,
+                    cancellationAvailable: true,
+                    reason: nil,
                     streamingAvailable: false,
                     streamingUnavailableReason: "Host has no streaming HTTP client.",
-                    cancellationAvailable: true
+                    taskCapabilities: nil
                 )
             )
         ])

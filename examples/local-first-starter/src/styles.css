@@ -1,0 +1,67 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --panel: #f7f8fa;
+  --fg: #16181d;
+  --muted: #5f6672;
+  --line: #d9dde3;
+  --accent: #2f5bd7;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --panel: #1b1e24;
+    --fg: #e9ecf1;
+    --muted: #9aa2ae;
+    --line: #2c313a;
+    --accent: #7f9bff;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px 32px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+h1 { font-size: 1.2rem; margin: 0 0 4px; }
+h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 8px; }
+section { margin: 24px 0; }
+.sub, .note { color: var(--muted); font-size: 0.85rem; margin: 0 0 8px; }
+code { background: var(--panel); padding: 1px 4px; border-radius: 4px; }
+
+ul { list-style: none; margin: 0 0 8px; padding: 0; }
+li { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; font-size: 0.85rem; word-break: break-word; }
+
+label { display: block; font-size: 0.8rem; color: var(--muted); margin: 8px 0 4px; }
+textarea, select {
+  width: 100%;
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+}
+textarea { min-height: 80px; resize: vertical; }
+
+.row { display: flex; gap: 8px; margin-top: 10px; }
+button {
+  font: inherit;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-height: 40px;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: 0.5; }
+section > button { margin-top: 10px; }
+
+.result { margin-top: 10px; padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; white-space: pre-wrap; }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamEvent, StreamRunHandle, TaskResult } from "@independo/inderun-contracts";
 import { validateStreamEvent } from "@independo/inderun-contracts";
-import { IndeRunException } from "@independo/inderun-web";
+import { IndeRunException, type IndeRunApi } from "@independo/inderun-web";
 
 const { createIndeRunWebMock } = vi.hoisted(() => ({
   createIndeRunWebMock: vi.fn()
@@ -130,6 +130,105 @@ describe("IndeRunWeb", () => {
     });
   });
 
+  describe("speech providers", () => {
+    const speechPackage = {
+      id: "articulino",
+      format: "onnx" as const,
+      source: { sourceType: "app_managed" as const, ref: "https://example.test/articulino/" },
+      speech: {
+        pipeline: "articulino",
+        sampleRate: 44_100,
+        graphs: { text: "text.onnx" },
+        voices: [{ id: "lena", name: "Lena", locales: ["de-AT"] }]
+      }
+    };
+
+    it("maps systemSpeech: true to the web SDK's defaults", async () => {
+      createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+      await new IndeRunWeb().configure({ systemSpeech: true });
+
+      expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({ systemSpeech: {} });
+    });
+
+    it("forwards a system speech id", async () => {
+      createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+      await new IndeRunWeb().configure({ systemSpeech: { id: "speech.web" } });
+
+      expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({
+        systemSpeech: { id: "speech.web" }
+      });
+    });
+
+    it("maps each neural speech entry onto the ONNX runtime descriptor, omitting unset fields", async () => {
+      createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+      await new IndeRunWeb().configure({
+        neuralSpeech: [
+          { modelPackage: speechPackage },
+          {
+            modelPackage: { ...speechPackage, id: "articulino-int8" },
+            runtime: "onnx",
+            id: "speech.neural",
+            timeoutMs: 8_000,
+            autoDownload: true
+          }
+        ]
+      });
+
+      expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({
+        neuralSpeech: [
+          { modelPackage: speechPackage, runtime: { kind: "onnx" } },
+          {
+            modelPackage: { ...speechPackage, id: "articulino-int8" },
+            runtime: { kind: "onnx" },
+            id: "speech.neural",
+            timeoutMs: 8_000,
+            autoDownload: true
+          }
+        ]
+      });
+    });
+
+    it("rejects the coreai runtime at configure, before building an engine", async () => {
+      const plugin = new IndeRunWeb();
+
+      await expect(
+        plugin.configure({ neuralSpeech: [{ modelPackage: speechPackage, runtime: "coreai" }] })
+      ).rejects.toMatchObject({
+        schemaVersion: "1.0",
+        errorClass: "Internal",
+        message: "coreai neural speech runtime is not available on this platform"
+      });
+      expect(createIndeRunWebMock).not.toHaveBeenCalled();
+    });
+
+    it("counts speech providers as registrations, but not an empty neuralSpeech list", async () => {
+      createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+      await expect(new IndeRunWeb().configure({ neuralSpeech: [] })).rejects.toMatchObject({
+        errorClass: "Unavailable"
+      });
+      await expect(
+        new IndeRunWeb().configure({ neuralSpeech: [{ modelPackage: speechPackage }] })
+      ).resolves.toBeUndefined();
+    });
+
+    it("registers the browser system speech provider through the real factory", async () => {
+      const actual =
+        await vi.importActual<typeof import("@independo/inderun-web")>("@independo/inderun-web");
+      createIndeRunWebMock.mockImplementation(actual.createIndeRunWeb);
+
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ systemSpeech: true });
+      const { providers } = await plugin.checkCapabilities();
+
+      expect(providers.map((snapshot) => snapshot.providerId)).toEqual(["web_system_speech"]);
+      await plugin.close();
+    });
+  });
+
   it("forwards modelProfiles to the web SDK unchanged", async () => {
     createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
 
@@ -181,7 +280,9 @@ describe("IndeRunWeb", () => {
           errorClass: "AuthError",
           message: "Missing authContextRef."
         })
-      )
+      ),
+      // The facade shares one plugin across tests, so the next configure closes this engine.
+      close: vi.fn()
     });
 
     await IndeRunCapacitor.configure({
@@ -229,7 +330,10 @@ describe("IndeRunWeb", () => {
 
     it("returns the SDK's snapshots verbatim inside the providers envelope", async () => {
       const checkCapabilitiesMock = vi.fn().mockResolvedValue([snapshot]);
-      createIndeRunWebMock.mockReturnValue({ checkCapabilities: checkCapabilitiesMock });
+      createIndeRunWebMock.mockReturnValue({
+        checkCapabilities: checkCapabilitiesMock,
+        close: vi.fn()
+      });
 
       const plugin = new IndeRunWeb();
       await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
@@ -279,7 +383,10 @@ describe("IndeRunWeb", () => {
 
     it("unwraps the envelope on the facade and configures exactly once per instance", async () => {
       const checkCapabilitiesMock = vi.fn().mockResolvedValue([snapshot]);
-      createIndeRunWebMock.mockReturnValue({ checkCapabilities: checkCapabilitiesMock });
+      createIndeRunWebMock.mockReturnValue({
+        checkCapabilities: checkCapabilitiesMock,
+        close: vi.fn()
+      });
 
       const inderun = createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } });
 
@@ -504,6 +611,281 @@ describe("IndeRunWeb", () => {
       });
       expect(errors[0].streamId).toBe("s1");
       expect(errors[0].error.errorClass).toBe("Internal");
+    });
+
+    it("delegates startPrepare() to the engine's prepare and delivers its events like a stream", async () => {
+      const controllable = createControllableRun();
+      const prepareMock = vi.fn().mockResolvedValue(controllable.run);
+      createIndeRunWebMock.mockReturnValue({ prepare: prepareMock });
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+
+      const notifications: { streamId: string; event: StreamEvent }[] = [];
+      await plugin.addListener("indeRunStreamEvent", (notification) => {
+        notifications.push(notification as { streamId: string; event: StreamEvent });
+      });
+
+      const request = { tasks: ["text_to_speech"], allowDownload: true };
+      await expect(plugin.startPrepare({ streamId: "p1", request })).resolves.toBe(handle);
+      expect(prepareMock).toHaveBeenCalledWith(request);
+
+      await plugin.cancelStream({ streamId: "p1", reason: "not now" });
+      expect(controllable.cancel).toHaveBeenCalledWith("not now");
+
+      controllable.push(terminalEvent(0, "cancelled"));
+      controllable.finish();
+      await vi.waitFor(() => {
+        expect(notifications).toHaveLength(1);
+      });
+      expect(notifications[0].streamId).toBe("p1");
+    });
+
+    it("returns a normalized contract error when startPrepare() is called before configure()", async () => {
+      const plugin = new IndeRunWeb();
+
+      await expect(plugin.startPrepare({ streamId: "p1", request: {} })).rejects.toMatchObject({
+        schemaVersion: "1.0",
+        errorClass: "Unavailable"
+      });
+    });
+
+    it("reassembles a prepare run on the facade, in sequence order", async () => {
+      const controllable = createControllableRun();
+      createIndeRunWebMock.mockReturnValue({
+        prepare: vi.fn().mockResolvedValue(controllable.run),
+        close: vi.fn()
+      });
+
+      const run = await createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } }).prepare({});
+      const progress: StreamEvent = {
+        schemaVersion: "1.0",
+        runId: "run_web",
+        sequence: 0,
+        timestamp: 1_700_000_000_000,
+        type: "preparation_progress",
+        payload: { providerId: "local.speech", task: "text_to_speech", fractionCompleted: 0.5 }
+      };
+      controllable.push(progress);
+      controllable.push(terminalEvent(1, "completed"));
+      controllable.finish();
+
+      const events: StreamEvent[] = [];
+      for await (const event of run.events) {
+        events.push(event);
+      }
+      expect(events.map((event) => event.type)).toEqual(["preparation_progress", "terminal"]);
+      expect(run.handle).toEqual(handle);
+    });
+  });
+
+  describe("engine lifecycle and artifacts", () => {
+    const artifact = {
+      id: "artifact_1",
+      owner: "engine" as const,
+      lifetime: "until_disposed" as const,
+      mediaType: "audio/wav"
+    };
+
+    it("closes the previous engine when configure() builds a new one", async () => {
+      const firstClose = vi.fn().mockResolvedValue(undefined);
+      const secondRun = vi.fn().mockResolvedValue({ runId: "second" });
+      createIndeRunWebMock
+        .mockReturnValueOnce({ close: firstClose })
+        .mockReturnValueOnce({ run: secondRun, close: vi.fn() });
+      const plugin = new IndeRunWeb();
+
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+      expect(firstClose).not.toHaveBeenCalled();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+      expect(firstClose).toHaveBeenCalledOnce();
+
+      await expect(
+        plugin.run({ schemaVersion: "1.0", task: { kind: "text_to_text" }, prompt: "Hello" })
+      ).resolves.toEqual({ runId: "second" });
+    });
+
+    it("resolves configure() when closing the replaced engine fails", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const secondRun = vi.fn().mockResolvedValue({ runId: "second" });
+      createIndeRunWebMock
+        .mockReturnValueOnce({ close: vi.fn().mockRejectedValue(new Error("close blew up")) })
+        .mockReturnValueOnce({ run: secondRun, close: vi.fn() });
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+
+      // The new engine is installed, so the configuration took effect.
+      await expect(plugin.configure({ openAI: { models: ["gpt-5.2"] } })).resolves.toBeUndefined();
+      await expect(
+        plugin.run({ schemaVersion: "1.0", task: { kind: "text_to_text" }, prompt: "Hello" })
+      ).resolves.toEqual({ runId: "second" });
+      expect(warn).toHaveBeenCalledOnce();
+      warn.mockRestore();
+    });
+
+    it("keeps the previous engine when a new configuration is refused", async () => {
+      const close = vi.fn();
+      createIndeRunWebMock.mockReturnValue({ close });
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+
+      await expect(plugin.configure({})).rejects.toMatchObject({ errorClass: "Unavailable" });
+      expect(close).not.toHaveBeenCalled();
+    });
+
+    it("returns the engine's chunk from readArtifact() with its bytes untouched", async () => {
+      const chunk = {
+        artifactId: "artifact_1",
+        offset: 0,
+        bytes: new Uint8Array([1, 2, 3]),
+        totalBytes: 3,
+        done: true
+      };
+      const readArtifact = vi.fn().mockResolvedValue(chunk);
+      createIndeRunWebMock.mockReturnValue({ readArtifact });
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+
+      await expect(plugin.readArtifact({ artifactId: "artifact_1" })).resolves.toBe(chunk);
+      expect(readArtifact).toHaveBeenCalledWith({ artifactId: "artifact_1" });
+    });
+
+    it("maps a readArtifact() failure to a contract error", async () => {
+      createIndeRunWebMock.mockReturnValue({
+        readArtifact: vi.fn().mockRejectedValue(
+          new IndeRunException({
+            errorClass: "Unavailable",
+            message: "No such artifact.",
+            details: { code: "artifact_not_found" }
+          })
+        )
+      });
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+
+      await expect(plugin.readArtifact({ artifactId: "gone" })).rejects.toMatchObject({
+        schemaVersion: "1.0",
+        errorClass: "Unavailable",
+        details: { code: "artifact_not_found" }
+      });
+    });
+
+    it("forwards disposeArtifact() and close() to the engine", async () => {
+      const disposeArtifact = vi.fn().mockResolvedValue(undefined);
+      const close = vi.fn().mockResolvedValue(undefined);
+      createIndeRunWebMock.mockReturnValue({ disposeArtifact, close });
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+
+      await plugin.disposeArtifact(artifact);
+      expect(disposeArtifact).toHaveBeenCalledWith(artifact);
+
+      await plugin.close();
+      expect(close).toHaveBeenCalledOnce();
+    });
+
+    it("keeps the closed engine, so later calls fail the way the engine fails them", async () => {
+      const engineClosed = new IndeRunException({
+        errorClass: "Unavailable",
+        message: "The engine is closed.",
+        details: { code: "engine_closed" }
+      });
+      const run = vi.fn().mockRejectedValue(engineClosed);
+      createIndeRunWebMock.mockReturnValue({ run, close: vi.fn() });
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ openAI: { models: ["gpt-5.2"] } });
+
+      await plugin.close();
+      await expect(
+        plugin.run({ schemaVersion: "1.0", task: { kind: "text_to_text" }, prompt: "Hello" })
+      ).rejects.toMatchObject({ errorClass: "Unavailable", details: { code: "engine_closed" } });
+      expect(run).toHaveBeenCalledOnce();
+    });
+
+    it("resolves close() on a plugin that was never configured", async () => {
+      await expect(new IndeRunWeb().close()).resolves.toBeUndefined();
+    });
+
+    it("decodes a base64 chunk on the facade and passes a Uint8Array through", async () => {
+      const readArtifact = vi
+        .fn()
+        // What native resolves: bytes as base64 over the JSON hop.
+        .mockResolvedValueOnce({
+          artifactId: "artifact_1",
+          offset: 0,
+          bytes: "AAEC/w==",
+          totalBytes: 4,
+          done: true
+        })
+        // What the web plugin resolves: the engine's bytes as they are.
+        .mockResolvedValueOnce({
+          artifactId: "artifact_1",
+          offset: 0,
+          bytes: new Uint8Array([9]),
+          totalBytes: 1,
+          done: true
+        });
+      createIndeRunWebMock.mockReturnValue({ readArtifact, close: vi.fn() });
+      const inderun = createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } });
+
+      const decoded = await inderun.readArtifact({ artifactId: "artifact_1" });
+      expect(decoded).toStrictEqual({
+        artifactId: "artifact_1",
+        offset: 0,
+        bytes: new Uint8Array([0, 1, 2, 255]),
+        totalBytes: 4,
+        done: true
+      });
+      const passed = await inderun.readArtifact({ artifactId: "artifact_1" });
+      expect(passed.bytes).toStrictEqual(new Uint8Array([9]));
+    });
+
+    it("rejects a chunk without bytes as a bridge error rather than passing undefined on", async () => {
+      createIndeRunWebMock.mockReturnValue({
+        readArtifact: vi
+          .fn()
+          .mockResolvedValue({ artifactId: "artifact_1", offset: 0, totalBytes: 4, done: true }),
+        close: vi.fn()
+      });
+      const inderun = createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } });
+
+      await expect(inderun.readArtifact({ artifactId: "artifact_1" })).rejects.toMatchObject({
+        schemaVersion: "1.0",
+        errorClass: "Internal"
+      });
+    });
+
+    it("does not configure an instance just to close it", async () => {
+      const inderun = createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } });
+
+      await expect(inderun.close()).resolves.toBeUndefined();
+      expect(createIndeRunWebMock).not.toHaveBeenCalled();
+    });
+
+    it("closes a configured instance, which then stays closed", async () => {
+      const close = vi.fn().mockResolvedValue(undefined);
+      const checkCapabilities = vi.fn().mockResolvedValue([]);
+      createIndeRunWebMock.mockReturnValue({ checkCapabilities, close });
+      const inderun = createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } });
+
+      await inderun.checkCapabilities();
+      await inderun.close();
+      expect(close).toHaveBeenCalledOnce();
+
+      // Not reconfigured: the call reaches the closed engine.
+      await expect(inderun.checkCapabilities()).resolves.toEqual([]);
+      expect(createIndeRunWebMock).toHaveBeenCalledOnce();
+    });
+
+    it("can be handed to the web SDK as an IndeRunApi", async () => {
+      const disposeArtifact = vi.fn().mockResolvedValue(undefined);
+      createIndeRunWebMock.mockReturnValue({ disposeArtifact, close: vi.fn() });
+
+      // The assignment is what matters; index.ts holds the compile-time guard, since
+      // `pnpm lint` does not type-check test files.
+      const api: IndeRunApi = createIndeRunCapacitor({ openAI: { models: ["gpt-5.2"] } });
+      await api.disposeArtifact(artifact);
+
+      expect(disposeArtifact).toHaveBeenCalledWith(artifact);
     });
   });
 });

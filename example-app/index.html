@@ -114,6 +114,59 @@
       <div id="refusal"></div>
     </section>
 
+    <section id="speech">
+      <h2>Speech</h2>
+      <p class="note">
+        Text to speech, local only (<code>execution.privacy = "local_required"</code>). An
+        explicit refusal is a valid result and is shown as one.
+      </p>
+
+      <div class="fields">
+        <div>
+          <label for="speech-text">Text</label>
+          <textarea id="speech-text">Der Bus kommt in fünf Minuten. The bus arrives in five minutes.</textarea>
+        </div>
+        <div>
+          <label for="speech-locale">Locale</label>
+          <select id="speech-locale">
+            <option value="de-AT">de-AT</option>
+            <option value="en-US">en-US</option>
+          </select>
+        </div>
+      </div>
+
+      <h3>System voices</h3>
+      <div class="row">
+        <button id="sys-list">List voices</button>
+        <button id="sys-speak" class="primary">Speak</button>
+        <button id="sys-generate">Generate WAV</button>
+      </div>
+      <p id="sys-status" class="note">Idle.</p>
+
+      <h3>Neural voice</h3>
+      <p class="note" id="neural-note">
+        Articulino (DE/EN, int8), about 95 MB. Demo catalog entry, benchmark-only until legal
+        review finishes. Downloads to this app's private storage; nothing else is installed.
+      </p>
+      <div class="row">
+        <button id="neural-download">Download Articulino (≈95 MB)</button>
+        <button id="neural-prepare">Prepare</button>
+      </div>
+      <progress id="neural-progress" value="0" max="1" hidden></progress>
+      <label for="neural-voice">Voice</label>
+      <select id="neural-voice" disabled></select>
+      <div class="row">
+        <button id="neural-speak" class="primary">Speak</button>
+        <button id="neural-generate">Generate WAV</button>
+      </div>
+      <p id="neural-status" class="note">Not downloaded.</p>
+
+      <div class="row">
+        <button id="speech-stop" disabled>Stop</button>
+      </div>
+      <div id="speech-result" class="panel" hidden></div>
+    </section>
+
     <section>
       <h2>Runs</h2>
       <div id="panes"></div>

@@ -37,7 +37,7 @@ let package = Package(
         // android/build.gradle.kts stay pinned, which is exactly the three-platform
         // drift the versioning policy forbids. Both operators exclude prereleases:
         // tracking a `-dev.N` again requires going back to `exact:`.
-        .package(url: "https://github.com/independo-gmbh/inderun.git", .upToNextMinor(from: "0.4.0"))
+        .package(url: "https://github.com/independo-gmbh/inderun.git", .upToNextMinor(from: "0.5.0"))
     ],
     targets: [
         .target(
@@ -47,7 +47,12 @@ let package = Package(
                 .product(name: "IndeRun", package: "IndeRun"),
                 .product(name: "IndeRunCore", package: "IndeRun"),
                 .product(name: "IndeRunAppleProviders", package: "IndeRun"),
-                .product(name: "IndeRunOpenAIProviders", package: "IndeRun")
+                .product(name: "IndeRunOpenAIProviders", package: "IndeRun"),
+                .product(name: "IndeRunNeuralSpeech", package: "IndeRun"),
+                .product(name: "IndeRunOnnxProviders", package: "IndeRun"),
+                // Builds to a stub on an Xcode without the Core AI SDK (iOS 27), where a `coreai`
+                // provider reports itself unavailable instead of failing the build.
+                .product(name: "IndeRunCoreAIProviders", package: "IndeRun")
             ],
             path: "ios/Sources/IndeRunCapacitorPlugin"
         ),
@@ -57,7 +62,8 @@ let package = Package(
                 .target(name: "IndeRunCapacitorPlugin"),
                 .product(name: "IndeRun", package: "IndeRun"),
                 .product(name: "IndeRunCore", package: "IndeRun"),
-                .product(name: "IndeRunContracts", package: "IndeRun")
+                .product(name: "IndeRunContracts", package: "IndeRun"),
+                .product(name: "IndeRunNeuralSpeech", package: "IndeRun")
             ],
             path: "ios/Tests/IndeRunCapacitorTests"
         )

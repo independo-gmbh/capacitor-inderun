@@ -1,9 +1,11 @@
 package app.independo.inderun.capacitor
 
 import app.independo.inderun.contracts.FinishReason
+import app.independo.inderun.contracts.Format
 import app.independo.inderun.contracts.IndeRunError
 import app.independo.inderun.contracts.IndeRunErrorClass
-import app.independo.inderun.contracts.Output
+import app.independo.inderun.contracts.TaskOutput
+import app.independo.inderun.contracts.TaskOutputType
 import app.independo.inderun.contracts.SchemaVersion
 import app.independo.inderun.contracts.TaskRequest
 import app.independo.inderun.contracts.TaskRequestTask
@@ -54,7 +56,7 @@ class IndeRunSerializerTest {
         val encoded = IndeRunSerializer.encodeTaskResult(
             TaskResult(
                 finishReason = FinishReason.STOP,
-                output = Output(text = "Hi"),
+                output = TaskOutput(text = "Hi", type = TaskOutputType.TEXT),
                 runId = "run_123",
                 schemaVersion = SchemaVersion.V1_0,
                 telemetry = TaskResultTelemetry(providerUsed = "openai", totalMs = 12.0)
@@ -143,19 +145,19 @@ class IndeRunSerializerTest {
     // --- encodeError ---
 
     /**
-     * `systemModel` and `onnx` are web-only bootstrap keys, like
-     * `allowDirectOpenAIEndpoint`. Android registers its own on-device provider, so it must
-     * ignore them rather than fail on the options object that carries them.
+     * `systemModel` is a web-only bootstrap key, like `allowDirectOpenAIEndpoint`. Android
+     * registers its own on-device provider, so it must ignore it rather than fail on the options
+     * object that carries it. `onnx` is not web-only: it parses on native.
      */
     @Test
-    fun `parseConfigureOptions ignores the web-only provider bootstrap keys`() {
+    fun `parseConfigureOptions ignores the web-only keys and parses onnx`() {
         val options = IndeRunSerializer.parseConfigureOptions(
             JSONObject(
                 """
                 {
                   "openAI": { "models": ["gpt-5.2"], "auth": "none" },
                   "systemModel": { "id": "local.system-model.web", "timeoutMs": 30000 },
-                  "onnx": { "modelPackage": { "id": "demo", "format": "onnx" } }
+                  "onnx": { "modelPackage": { "id": "demo", "format": "onnx" }, "id": "text.demo", "timeoutMs": 5000 }
                 }
                 """.trimIndent()
             )
@@ -163,6 +165,15 @@ class IndeRunSerializerTest {
 
         assertEquals(listOf("gpt-5.2"), options.openAI?.models)
         assertEquals("none", options.openAI?.auth)
+        assertEquals("demo", options.onnx?.modelPackage?.id)
+        assertEquals(Format.Onnx, options.onnx?.modelPackage?.format)
+        assertEquals("text.demo", options.onnx?.id)
+        assertEquals(5000L, options.onnx?.timeoutMs)
+    }
+
+    @Test
+    fun `parseConfigureOptions leaves onnx unset when absent`() {
+        assertNull(IndeRunSerializer.parseConfigureOptions(JSONObject("{}")).onnx)
     }
 
     @Test

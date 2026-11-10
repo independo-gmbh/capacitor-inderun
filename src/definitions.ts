@@ -1,7 +1,13 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import type {
+  ArtifactReadRequest,
   IndeRunError,
+  MediaArtifact,
   ModelPackage,
+  PrepareRequest,
+  ProviderCapabilitySnapshot,
+  ProviderDescriptor,
+  ProviderDynamicCapabilities,
   StreamEvent,
   StreamRunHandle,
   TaskRequest,
@@ -16,10 +22,22 @@ import type {
  * `providerId` that results, errors and provenance report. At least one model is required.
  */
 export interface OpenAIProviderBootstrapOptions {
+  /** Model names to register, one target each. At least one. */
   models: string[];
+  /**
+   * The Responses endpoint to call. Point it at a backend you control, which holds the API key;
+   * for a browser app, a same-origin proxy with `auth: "none"`.
+   */
   endpointUrl?: string;
+  /**
+   * How the request authenticates. `"none"` sends no credential, for a proxy that holds it.
+   * `"authContextRef"` resolves the one named by `authContextRef` through the host's secure
+   * storage. Never a raw secret.
+   */
   auth?: "authContextRef" | "none";
+  /** Secure-storage slot for the credential. Used with `auth: "authContextRef"`. */
   authContextRef?: string;
+  /** Bounds a request, in milliseconds. A request's `constraints.timeoutMs` wins. */
   timeoutMs?: number;
 }
 
@@ -39,17 +57,29 @@ export interface OpenAIProviderBootstrapOptions {
  * and `configure()` has to survive a JSON bridge hop on native.
  */
 export interface SystemModelProviderBootstrapOptions {
+  /** Provider id. Defaults to `local.system-model.web`. */
   id?: string;
+  /** Bounds a run until it commits, in milliseconds. A request's `constraints.timeoutMs` wins. */
   timeoutMs?: number;
 }
 
 /**
- * Bootstrap options for the Web ONNX Runtime provider, for a developer-supplied local
- * model.
+ * Bootstrap options for the ONNX Runtime text provider, for a developer-supplied local model.
+ * Mode 1 only. Runs on the web, iOS and Android.
  *
- * **Web only**, like `systemModel`, and Mode 1 only.
+ * **Model files on iOS and Android** (also for `neuralSpeech`): `modelPackage.source.sourceType`
+ * says where they are read from. `app_managed` is the app's own storage under `source.ref`
+ * (Application Support on iOS, `context.filesDir` on Android); `filesystem` is the absolute path
+ * in `source.ref`; `bundled` is a folder shipped inside the app. `registry` and `remote` are not
+ * supported, and the plugin downloads nothing for text models. On the web the files must be
+ * reachable by URL instead.
  *
- * Two caveats worth knowing before reaching for this. The consumer has to install the
+ * On iOS and Android this registers the platform's ONNX Runtime provider (default id
+ * `local.onnx.genai.apple` or `local.onnx.genai.android`, or `id`). It loads the model on first
+ * use and downloads nothing: the files have to be on the device already.
+ * `timeoutMs` bounds a run until it commits; a request's `constraints.timeoutMs` wins.
+ *
+ * Two caveats for the web. The consumer has to install the
  * optional `@huggingface/transformers` peer dependency — this bridge does not declare it —
  * and supply real model weights, because the web SDK's `runtime` seam is a function and so
  * cannot cross the JSON bridge hop: only the default Transformers.js runtime is reachable
@@ -58,12 +88,82 @@ export interface SystemModelProviderBootstrapOptions {
  * register it only when the weights are actually there.
  */
 export interface OnnxProviderBootstrapOptions {
+  /** Provider id. Defaults to `local.onnx.genai.apple` or `local.onnx.genai.android`. */
   id?: string;
+  /** The model files and where they are. Describe each file's sha256 in `integrity.checksums`. */
   modelPackage: ModelPackage;
+  /** Bounds a run until it commits, in milliseconds. A request's `constraints.timeoutMs` wins. */
   timeoutMs?: number;
 }
 
+/**
+ * Bootstrap options for the platform's system speech provider: `AVSpeechSynthesizer` on iOS,
+ * `android.speech.tts.TextToSpeech` on Android, `speechSynthesis` on the web. Pass `true` for
+ * the defaults.
+ *
+ * Opt-in on every platform (ADR 018): the router probes every registered provider on every
+ * request, so an app that does not speak should not pay for a voice listing. The provider id
+ * defaults to `apple_system_speech`, `android_system_speech` or `web_system_speech`. The
+ * browser provider only plays audio: it cannot write an artifact, so routing refuses
+ * `generateSpeech()` there.
+ */
+export interface SystemSpeechBootstrapOptions {
+  /** Provider id. Defaults to `apple_system_speech`, `android_system_speech` or `web_system_speech`. */
+  id?: string;
+}
+
+/**
+ * Bootstrap options for one neural speech provider: a developer-supplied speech model package
+ * (its `speech` block names the pipeline, graphs and voices) and the runtime that executes it.
+ *
+ * Each entry registers one provider, with id `local.onnx.speech.<platform>:<modelPackage.id>`
+ * (`apple`, `android` or `web`) unless `id` is set, so one app can register several models side
+ * by side. It plays through the platform's audio output and writes `audio/wav` artifacts.
+ *
+ * - `runtime` defaults to `"onnx"` (ONNX Runtime, every platform). `"coreai"` runs a
+ *   `format: "coreai"` package on Apple Core AI and is **iOS only**: its provider id defaults to
+ *   `local.coreai.speech.apple:<modelPackage.id>`, below iOS 27 the provider reports itself
+ *   unavailable and routing skips it, and preparing the model on a device needs the app's consent
+ *   (`autoDownload`, or `prepare({ allowDownload: true })`). `configure()` rejects `"coreai"` on
+ *   Android and the web.
+ * - `autoDownload` lets `prepare()`, explicit or on the first run, start this provider's
+ *   download on its own. Off by default, because a download can use mobile data; a single call
+ *   can still allow one with `prepare({ allowDownload: true })`.
+ * - `timeoutMs` bounds the synthesis until the run commits; a request's `constraints.timeoutMs`
+ *   wins.
+ *
+ * On iOS and Android the package's source names files on the device, see
+ * the model file paragraph on {@link OnnxProviderBootstrapOptions}. **On the web** the package
+ * files must be reachable by URL (`bundled` or `app_managed`): `configure()` has to stay JSON, so
+ * the runtime is chosen by name, and a runtime that reads a package the app installed into OPFS
+ * cannot be passed across. The web runtime also needs the optional `onnxruntime-web` peer
+ * dependency, which this plugin does not declare: the app installs it.
+ */
+export interface NeuralSpeechBootstrapOptions {
+  /**
+   * The model package. List a sha256 per file in `integrity.checksums`; the provider verifies
+   * each file before loading it.
+   */
+  modelPackage: ModelPackage;
+  /** `"onnx"` (default, every platform) or `"coreai"` (iOS 27+ only). */
+  runtime?: "onnx" | "coreai";
+  /** Provider id. See the id rule above. */
+  id?: string;
+  /** Bounds the synthesis until the run commits, in milliseconds. */
+  timeoutMs?: number;
+  /** Lets `prepare()` start this provider's download on its own. Off by default. */
+  autoDownload?: boolean;
+}
+
+/**
+ * What to register in the engine `configure()` builds. Every field is optional on iOS and
+ * Android, which always register their own on-device text provider. On the web at least one
+ * of `openAI`, `systemModel`, `onnx`, `systemSpeech` or `neuralSpeech` is required.
+ *
+ * Nothing here is a cloud route unless you pass `openAI`.
+ */
 export interface ConfigureOptions {
+  /** The OpenAI-compatible cloud provider. Absent means no cloud route exists. */
   openAI?: OpenAIProviderBootstrapOptions;
   /**
    * Named model profiles: a profile name mapped to an ordered list of target ids
@@ -78,8 +178,17 @@ export interface ConfigureOptions {
   modelProfiles?: Record<string, string[]>;
   /** Web only; native registers its own on-device provider. */
   systemModel?: SystemModelProviderBootstrapOptions;
-  /** Web only; native registers its own on-device provider. */
+  /** All platforms. See `OnnxProviderBootstrapOptions`, including its model file paragraph. */
   onnx?: OnnxProviderBootstrapOptions;
+  /** All platforms, and never registered unless asked for. See `SystemSpeechBootstrapOptions`. */
+  systemSpeech?: true | SystemSpeechBootstrapOptions;
+  /** All platforms; one provider per entry. See `NeuralSpeechBootstrapOptions`. */
+  neuralSpeech?: NeuralSpeechBootstrapOptions[];
+  /**
+   * Web only; ignored on iOS and Android. Explicit opt-in for calling a public Responses
+   * endpoint (OpenAI's or OpenRouter's) straight from the browser. Leave it unset and use a
+   * proxy endpoint with `openAI.auth = "none"`: direct calls can expose credentials.
+   */
   allowDirectOpenAIEndpoint?: boolean;
 }
 
@@ -96,6 +205,18 @@ export interface ConfigureOptions {
 export interface StartStreamOptions {
   streamId: string;
   request: TaskRequest;
+}
+
+/**
+ * Envelope for `startPrepare`: the same shape as `StartStreamOptions`, carrying a
+ * `PrepareRequest` instead of a `TaskRequest`. A prepare run is delivered exactly like a
+ * stream — the same `"indeRunStreamEvent"` / `"indeRunStreamError"` notifications keyed by
+ * `streamId`, cancelled through the same `cancelStream` — because upstream returns the same
+ * `StreamRun` from both.
+ */
+export interface StartPrepareOptions {
+  streamId: string;
+  request: PrepareRequest;
 }
 
 export interface CancelStreamOptions {
@@ -131,76 +252,64 @@ export interface StreamRun {
 }
 
 /**
- * A provider's static capability declaration.
+ * One range of an engine-owned media artifact's bytes, as `readArtifact` returns it (ADR 017).
  *
- * Declared here rather than imported, because — unlike `TaskRequest`, `StreamEvent` and
- * the rest — this shape is *not* a generated contract. There is no schema for it in
- * `@independo/inderun-contracts` and no validator; each SDK declares it independently
- * (`core/provider.d.ts` in `@independo/inderun-web`, `IndeRunCore/Provider.swift`,
- * `core/Provider.kt`), and this is the fourth copy. Importing it from
- * `@independo/inderun-web` is not an option either: that would make the native
- * platforms' plugin contract depend on the web SDK.
- *
- * The drift guard is in `web.ts`, which returns the web SDK's value into this type
- * uncast — so `tsc` proves the shapes still match on every build, the same way the
- * `StreamRun` mirror below is checked. See the upstream follow-up asking for a schema.
+ * Declared here rather than imported: it is not a generated contract — each SDK declares its
+ * own (`core/artifacts.d.ts` in `@independo/inderun-web`) — and importing it from the web SDK
+ * would make the native platforms' plugin contract depend on it. The drift guard is in
+ * `index.ts`, which checks that `IndeRunCapacitorInstance` stays assignable to the web SDK's
+ * `IndeRunApi`, whose `readArtifact` returns the web SDK's chunk.
  */
-export interface ProviderDescriptor {
-  id: string;
-  /**
-   * The model this target is bound to, as the provider names it. Absent when the provider
-   * cannot name one — a platform-managed on-device model reports nothing rather than a
-   * guessed weight name.
-   */
-  model?: string;
-  type: "local" | "edge" | "cloud";
-  transport: "in_process" | "system_service" | "http" | "sse" | "realtime";
-  streamingStyle?: "tokens" | "chunks" | "snapshots";
-  supports: {
-    run: boolean;
-    streaming: boolean;
-    realtime: boolean;
-    tools: boolean;
-    reasoningEvents: boolean;
-    structuredOutput: boolean;
-    multimodal: boolean;
-  };
-  cancel: "hard" | "soft" | "none";
-  tasks: string[];
-  limits?: {
-    maxInputTokens?: number;
-    maxOutputTokens?: number;
-    maxImageBytes?: number;
-    maxAudioSeconds?: number;
-  };
-  privacy?: {
-    dataLeavesDevice: boolean;
-    regions?: string[];
-  };
+export interface ArtifactChunk {
+  /** The artifact the bytes belong to. */
+  artifactId: string;
+  /** Byte offset of `bytes` within the artifact. */
+  offset: number;
+  /** The bytes of this range; empty when `offset` is the artifact's end. */
+  bytes: Uint8Array;
+  /** Size of the whole artifact in bytes. */
+  totalBytes: number;
+  /** Whether this range reaches the end of the artifact. */
+  done: boolean;
 }
 
 /**
- * A provider's live availability, as of the moment `checkCapabilities()` was called.
- *
- * `streamingAvailable` and `cancellationAvailable` are **absent**, not `null`, when the
- * runtime has nothing to say: absence means *inherit the static declaration*
- * (`descriptor.supports.streaming`, and `descriptor.cancel !== "none"`). Both native
- * encoders omit the key rather than emitting null for exactly that reason.
+ * `ArtifactChunk` as it crosses the plugin boundary. A Capacitor native call resolves JSON,
+ * which cannot carry a byte array, so iOS and Android send `bytes` as a **base64 string**;
+ * the web implementation has no hop to cross and sends the engine's `Uint8Array` as is.
+ * `IndeRunCapacitor.readArtifact` and `createIndeRunCapacitor()` decode either form back into
+ * `ArtifactChunk`. Base64 is transport only: results still carry artifact handles, never bytes.
  */
-export interface ProviderDynamicCapabilities {
-  available: boolean;
-  reason?: string;
-  streamingAvailable?: boolean;
-  streamingUnavailableReason?: string;
-  cancellationAvailable?: boolean;
+export interface BridgedArtifactChunk extends Omit<ArtifactChunk, "bytes"> {
+  bytes: string | Uint8Array;
 }
 
-/** One registered provider's identity, static declaration, and live availability. */
-export interface ProviderCapabilitySnapshot {
-  providerId: string;
-  descriptor: ProviderDescriptor;
-  capabilities: ProviderDynamicCapabilities;
-}
+/**
+ * The provider capability shapes `checkCapabilities()` returns.
+ *
+ * These were hand-written mirrors while the snapshot had no schema; it is now a generated
+ * contract (`provider-capability-snapshot.schema.json`), so the bridge uses the contract's
+ * types and names the nested ones here. That is also what keeps the bridge assignable to the
+ * web SDK's `IndeRunApi`, whose `checkCapabilities()` returns exactly these.
+ */
+export type { ProviderCapabilitySnapshot, ProviderDescriptor, ProviderDynamicCapabilities };
+
+/** The provider's static capabilities for one task kind. */
+export type ProviderTaskCapability = NonNullable<ProviderDescriptor["taskCapabilities"]>[number];
+
+/** Whether data leaves the device, and where it may go. */
+export type ProviderPrivacy = NonNullable<ProviderDescriptor["privacy"]>;
+
+/** A provider's live availability for one task kind. Absent fields inherit the task-wide values. */
+export type ProviderTaskAvailability = NonNullable<
+  ProviderDynamicCapabilities["taskCapabilities"]
+>[number];
+
+/** One speech voice a provider can render, as listed at `checkCapabilities()` time. */
+export type ProviderVoice = NonNullable<ProviderTaskAvailability["voices"]>[number];
+
+/** How ready a task (or a voice) is on this host: whether using it would first need preparing. */
+export type ProviderReadiness = NonNullable<ProviderTaskAvailability["readiness"]>;
 
 /**
  * Envelope for `checkCapabilities()`. The array is wrapped because a Capacitor plugin
@@ -214,7 +323,19 @@ export interface CheckCapabilitiesResult {
 }
 
 export interface IndeRunCapacitorPlugin {
+  /**
+   * Builds one engine for this configuration, which every later call uses until the next
+   * `configure()`. Engine-owned artifacts live in that engine, and providers that load a
+   * model keep it loaded there. A new configuration replaces the engine and closes the
+   * previous one (see `close()`), resolving once that close has finished; a configuration
+   * that fails validation leaves the previous engine in place.
+   */
   configure(options?: ConfigureOptions): Promise<void>;
+  /**
+   * Executes a Mode 1 task and resolves with the completed `TaskResult`. Rejects with an
+   * `IndeRunError` on validation failure, when no provider is eligible, or when every attempted
+   * provider fails. The request is passed at the options root.
+   */
   run(request: TaskRequest): Promise<TaskResult>;
   /**
    * Live snapshot of every registered provider, without executing a task. Availability
@@ -228,7 +349,36 @@ export interface IndeRunCapacitorPlugin {
    * carry a matching comment.
    */
   startStream(options: StartStreamOptions): Promise<StreamRunHandle>;
+  /**
+   * Starts a prepare run (ADR 019): makes registered providers ready ahead of a run without
+   * producing output. Delivered and cancelled exactly like `startStream` — events on
+   * `"indeRunStreamEvent"` keyed by `streamId`, ending in one terminal event whose output
+   * lists each preparation item; `cancelStream({ streamId })` cancels it.
+   */
+  startPrepare(options: StartPrepareOptions): Promise<StreamRunHandle>;
+  /**
+   * Cancels a stream or prepare run by its bridge-local `streamId`. Idempotent. No event is
+   * delivered after the cancel, and the run ends in one terminal `cancelled` event.
+   */
   cancelStream(options: CancelStreamOptions): Promise<void>;
+  /**
+   * Reads a byte range of an engine-owned media artifact a run produced. Like `run(request)`,
+   * the request is passed at the options root. See `BridgedArtifactChunk` for how `bytes`
+   * crosses the boundary.
+   */
+  readArtifact(request: ArtifactReadRequest): Promise<BridgedArtifactChunk>;
+  /** Releases an engine-owned artifact's bytes. Idempotent; the artifact is passed at the options root. */
+  disposeArtifact(artifact: MediaArtifact): Promise<void>;
+  /**
+   * Closes the engine the last `configure()` built: in-flight streams and prepares end in their
+   * cancelled terminal, in-flight runs finish, engine-owned artifacts are disposed. Then the
+   * speech providers and neural runtimes built from `configure()`'s options are released, with
+   * the models they loaded. Every later call fails the way the closed engine fails it
+   * (`Unavailable`, `details.code: "engine_closed"`; `checkCapabilities()` reports no
+   * providers) until `configure()` builds a new one. Closing an unconfigured or already closed
+   * plugin does nothing.
+   */
+  close(): Promise<void>;
   addListener(
     eventName: "indeRunStreamEvent",
     listenerFunc: (notification: StreamEventNotification) => void
@@ -237,5 +387,6 @@ export interface IndeRunCapacitorPlugin {
     eventName: "indeRunStreamError",
     listenerFunc: (notification: StreamErrorNotification) => void
   ): Promise<PluginListenerHandle>;
+  /** Removes every listener this plugin holds, for both event names. */
   removeAllListeners(): Promise<void>;
 }

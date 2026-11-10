@@ -1,6 +1,7 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import {
   validateStreamRunHandle,
+  type PrepareRequest,
   type StreamEvent,
   type StreamRunHandle,
   type TaskRequest
@@ -294,9 +295,33 @@ const dispatcher = new StreamDispatcher();
  * The listeners are registered *before* `startStream` is called, so no event can be
  * emitted for a run whose sink does not exist yet.
  */
-export async function startCapacitorStream(
+export function startCapacitorStream(
   plugin: IndeRunCapacitorPlugin,
   request: TaskRequest
+): Promise<StreamRun> {
+  return startBridgedRun(plugin, (streamId) => plugin.startStream({ streamId, request }));
+}
+
+/**
+ * Starts a prepare run over the bridge. Upstream returns the same `StreamRun` from
+ * `prepare()` as from `stream()`, so it crosses the same way: same notifications, same
+ * reassembly, same `cancelStream`.
+ */
+export function startCapacitorPrepare(
+  plugin: IndeRunCapacitorPlugin,
+  request: PrepareRequest
+): Promise<StreamRun> {
+  return startBridgedRun(plugin, (streamId) => plugin.startPrepare({ streamId, request }));
+}
+
+/**
+ * The shared half of `startCapacitorStream` and `startCapacitorPrepare`: binds a sink for a
+ * fresh `streamId`, asks native to start the run through `start`, and hands back the
+ * reassembled `StreamRun`.
+ */
+async function startBridgedRun(
+  plugin: IndeRunCapacitorPlugin,
+  start: (streamId: string) => Promise<StreamRunHandle>
 ): Promise<StreamRun> {
   const streamId = createStreamId();
   const sink = new StreamSink();
@@ -305,7 +330,7 @@ export async function startCapacitorStream(
 
   let handle: StreamRunHandle;
   try {
-    handle = await plugin.startStream({ streamId, request });
+    handle = await start(streamId);
   } catch (error) {
     dispatcher.release(streamId);
     throw normalizePluginError(error);

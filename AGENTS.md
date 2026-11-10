@@ -5,9 +5,25 @@
   `OpenAIProviderBootstrapOptions`, `IndeRunCapacitorPlugin`, and the Mode 2 envelopes), `index.ts`
   (registers the Capacitor plugin via `registerPlugin`, exposes `IndeRunCapacitor` and the
   `createIndeRunCapacitor()` helper that lazily configures and memoizes), `streaming.ts` (the Mode 2
-  reassembly: `StreamSink`, `StreamDispatcher`, `startCapacitorStream`), `errors.ts`
+  reassembly: `StreamSink`, `StreamDispatcher`, `startCapacitorStream`, `startCapacitorPrepare`),
+  `artifacts.ts` (`decodeArtifactChunk`: native sends artifact bytes as base64), `errors.ts`
   (`normalizePluginError`, `createBridgeError`), `web.ts` (the web fallback implementation,
   `IndeRunWeb`, wired to `@independo/inderun-web`).
+- Each platform holds **one engine per `configure()`** and reuses it for every call: artifacts
+  are engine-owned, and providers that load a model keep it loaded in that engine. A new
+  `configure()` closes the engine it replaces and then releases the providers and runtimes the
+  bridge built for it (system speech, the ONNX text provider, neural speech runtimes and their loaded
+  models, the Core AI provider built by `makeCoreAINeuralSpeechProvider`); `close()`
+  and plugin teardown do the same. Upstream's `close()` closes no provider an app constructed, and
+  for these the bridge is the app, so it keeps them next to the engine (`BridgedConfiguration` on
+  both natives) and closes them after it. Do not go back to building an engine per call.
+- `speak`, `generateSpeech` and `listVoices` in `index.ts` are the web SDK's speech facade applied
+  to the bridge, loaded with a dynamic `import()`: `index.ts` is in every native app's bundle, and
+  a static import of `@independo/inderun-web` would pull in the web engine and its WASM loader.
+  Re-measured on rc.21 (the package is `sideEffects: false` now): the static import alone is +3 KB,
+  but `index.ts` also reaches the SDK through the lazy web fallback (`web.ts`), so a bundler hoists
+  the shared SDK modules into a chunk the entry loads up front (+108 KB raw, WASM loader included).
+  Keep runtime imports of that package dynamic (type imports are fine).
 - Native implementations live in `android/` (Gradle module, plugin entry under
   `android/src/main/`, with `IndeRunStreamRegistry.kt` tracking live streaming runs) and
   `ios/Sources/IndeRunCapacitorPlugin/` (`IndeRunCapacitorPlugin.swift` is the Capacitor plugin
@@ -21,6 +37,8 @@
   CI because every job is root-scoped. Do **not** add it to `pnpm-workspace.yaml`: that file has no
   `packages:` key, so pnpm treats the root as a single package, and adding it would drag the example
   into `--frozen-lockfile`.
+  `examples/local-first-starter/` is the same kind of isolated app, meant to be copied by app
+  developers; same rules (not in the workspace, not in CI).
 - This repo is deliberately a **thin bridge only**: it delegates routing, provider logic, and error
   normalization to the released IndeRun platform SDKs (`@independo/inderun-web` on npm, the
   `IndeRun` Swift package, `app.independo.inderun:inderun-*` on Maven Central). Native SDK behavior
@@ -32,7 +50,15 @@
 - `pnpm test` / `pnpm test:web` — runs the Vitest suite for the web fallback.
 - `pnpm test:android` — runs `android/src/test` via `./gradlew :testDebugUnitTest`.
 - `pnpm test:ios` — runs `swift test` against `ios/Tests`.
+- iOS plugin sources (`#if canImport(Capacitor)`) are not compiled by `swift build`/`swift test` on macOS. To compile
+  them for the simulator: `cd ios/CIProbe && xcodebuild -scheme Probe -destination 'generic/platform=iOS Simulator' build`
+  (CI runs it; the probe package stands in for a Capacitor app, which is what supplies Cordova).
 - `pnpm lint` — type-check only (`tsc --noEmit -p tsconfig.json`); there is no separate ESLint step.
+- `pnpm check:snippets` — type-checks `snippets/*.ts` (one file per README example) against `src/index.ts`.
+  `pnpm sync:markers` rewrites the README's `<!-- snippet:NAME -->` / `<!-- version:NAME -->` blocks
+  from `snippets/` and `versions.json` (ADR 024); `pnpm check:markers` fails when they are stale or when
+  `versions.json` disagrees with the pins in `package.json`, `Package.swift` or `android/build.gradle.kts`.
+  Never edit text between marker pairs by hand. A snippet containing `TODO(verify)` is skipped and reported pending.
 - `pnpm verify:web` / `verify:android` / `verify:ios` — platform build verification (`tsc`, Gradle
   `assembleDebug`, `swift build` respectively). Android/iOS verification require the Android
   SDK/NDK and Xcode toolchains locally.
@@ -88,9 +114,10 @@
   rather than `from:` because `from:` on a 0.x means `<1.0.0`, which would let SwiftPM float across a
   minor (where an 0.x SDK's breaking changes live) while the other two stay pinned, and invisibly, as
   `Package.resolved` is gitignored.
-- Bumping is a five-file edit — `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`'s
-  `minimumReleaseAgeExclude`, `Package.swift`, `android/build.gradle.kts` — plus the version table in
-  `README.md`. Miss the workspace allowlist and the install is age-blocked. Note `pnpm install` alone
+- Bumping is a six-file edit — `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`'s
+  `minimumReleaseAgeExclude`, `Package.swift`, `android/build.gradle.kts`, `versions.json` — then
+  `pnpm sync:markers` regenerates the README's version table and install line (`pnpm check:markers`
+  fails when `versions.json` and the pins disagree). Miss the workspace allowlist and the install is age-blocked. Note `pnpm install` alone
   may leave the lockfile's importer entry on the old version while updating its specifier; check it,
   and use `pnpm up <pkg>@<version>` when it does.
 - While the bridge tracks an `inderun` **prerelease**, switch `Package.swift` back to `exact:`.
