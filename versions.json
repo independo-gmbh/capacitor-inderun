@@ -1,5 +1,5 @@
 {
-  "inderun": "0.5.0-rc.20",
+  "inderun": "0.5.0-rc.21",
   "capacitor": "8",
   "swiftConstraint": "exact",
   "kotlinGradlePlugin": "2.4.21"

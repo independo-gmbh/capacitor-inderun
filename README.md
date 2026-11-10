@@ -98,14 +98,14 @@ supports 15.0"*.
 
 ## Supported IndeRun Version
 
-This release tracks <!-- version:inderun-version -->**IndeRun 0.5.0-rc.20**<!-- /version --> on all three platforms:
+This release tracks <!-- version:inderun-version -->**IndeRun 0.5.0-rc.21**<!-- /version --> on all three platforms:
 
 <!-- version:supported-table -->
 | Platform | Artifact | Constraint |
 |----------|----------|------------|
-| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.5.0-rc.20` (exact) |
-| iOS      | `inderun` SwiftPM package | `0.5.0-rc.20` (exact) |
-| Android  | `app.independo.inderun:inderun-*` | `0.5.0-rc.20` (exact) |
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.5.0-rc.21` (exact) |
+| iOS      | `inderun` SwiftPM package | `0.5.0-rc.21` (exact) |
+| Android  | `app.independo.inderun:inderun-*` | `0.5.0-rc.21` (exact) |
 <!-- /version -->
 
 <!-- version:pin-policy -->

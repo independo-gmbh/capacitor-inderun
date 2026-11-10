@@ -35,7 +35,7 @@ let package = Package(
         // an older stable. Go back to `.upToNextMinor(from:)` once a stable 0.5.0 is pinned,
         // so a consumer that also depends on `inderun` directly can unify the graph. See the
         // versioning policy in AGENTS.md.
-        .package(url: "https://github.com/independo-gmbh/inderun.git", exact: "0.5.0-rc.20")
+        .package(url: "https://github.com/independo-gmbh/inderun.git", exact: "0.5.0-rc.21")
     ],
     targets: [
         .target(
