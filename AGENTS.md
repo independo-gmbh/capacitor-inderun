@@ -46,6 +46,9 @@
 - `pnpm test` / `pnpm test:web` — runs the Vitest suite for the web fallback.
 - `pnpm test:android` — runs `android/src/test` via `./gradlew :testDebugUnitTest`.
 - `pnpm test:ios` — runs `swift test` against `ios/Tests`.
+- iOS plugin sources (`#if canImport(Capacitor)`) are not compiled by `swift build`/`swift test` on macOS. To compile
+  them for the simulator: `cd ios/CIProbe && xcodebuild -scheme Probe -destination 'generic/platform=iOS Simulator' build`
+  (CI runs it; the probe package stands in for a Capacitor app, which is what supplies Cordova).
 - `pnpm lint` — type-check only (`tsc --noEmit -p tsconfig.json`); there is no separate ESLint step.
 - `pnpm check:snippets` — type-checks `snippets/*.ts` (one file per README example) against `src/index.ts`.
   `pnpm sync:markers` rewrites the README's `<!-- snippet:NAME -->` / `<!-- version:NAME -->` blocks

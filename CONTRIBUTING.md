@@ -50,6 +50,12 @@ snippet or `versions.json`, then run `sync:markers`. `check:markers` fails when 
 when `versions.json` disagrees with the pins in `package.json`, `Package.swift` or
 `android/build.gradle.kts`. A snippet marked `TODO(verify)` is skipped and reported as pending.
 
+#### iOS plugin sources
+
+`swift build` and `swift test` on macOS skip the Capacitor-conditional plugin sources. Compile them for
+the iOS simulator with `cd ios/CIProbe && xcodebuild -scheme Probe -destination 'generic/platform=iOS Simulator' build`;
+CI runs the same command. `ios/CIProbe` is a CI-only package and is not published.
+
 #### `pnpm verify:web` / `pnpm verify:android` / `pnpm verify:ios`
 
 Platform build verification. `verify:android` and `verify:ios` require a configured Android SDK/NDK

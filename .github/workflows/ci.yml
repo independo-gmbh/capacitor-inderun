@@ -66,3 +66,8 @@ jobs:
         run: swift build
       - name: Run iOS unit tests
         run: swift test
+      # `swift build` on macOS does not compile the Capacitor-conditional plugin sources.
+      # ios/CIProbe stands in for a Capacitor app so xcodebuild compiles them for iOS.
+      - name: Compile the iOS plugin sources for the simulator
+        working-directory: ios/CIProbe
+        run: xcodebuild -scheme Probe -destination 'generic/platform=iOS Simulator' build
