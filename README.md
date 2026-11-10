@@ -215,11 +215,22 @@ things are specific to reaching them through a bridge:
 
 ## API
 
-- `createIndeRunCapacitor(options)` — returns a handle that lazily `configure()`s on the first `run()` or `stream()` and memoizes it. Safe to call once at app startup.
+- `createIndeRunCapacitor(options)` — returns a handle that lazily `configure()`s on its first call and memoizes it. Safe to call once at app startup. The handle has the same methods as the web SDK's `IndeRunApi`, so it can be passed wherever that type is taken.
 - `run(request)` — Mode 1. Resolves with the canonical IndeRun `TaskResult`.
 - `stream(request)` — Mode 2. Resolves with a `StreamRun` (`handle`, `events`, `cancel`). `events` is single-use.
 - `checkCapabilities()` — every registered provider's static declaration and live availability, without executing a task. Resolves with `ProviderCapabilitySnapshot[]`. Use it for a provider or settings screen; availability changes between calls, so do not cache it across a `run()` or `stream()`.
-- The low-level plugin methods `configure(options)`, `startStream(options)` and `cancelStream(options)` are also exported, along with the listener event names `STREAM_EVENT_NAME` (`"indeRunStreamEvent"`) and `STREAM_ERROR_NAME` (`"indeRunStreamError"`).
+- `prepare(request)` — makes registered providers ready ahead of a run, without producing output. Resolves with a `StreamRun` like `stream()`: progress events, then one terminal event whose output lists each item. `prepare({})` covers every provider and task; a platform download starts only where `allowDownload` permits it.
+- `readArtifact({ artifactId, offset?, maxBytes? })` — reads a byte range of a media artifact a run produced. Resolves with an `ArtifactChunk` whose `bytes` is a `Uint8Array`.
+- `disposeArtifact(artifact)` — releases an artifact's bytes. Artifacts outlive the run that produced them, so dispose each one you keep no longer.
+- `close()` — closes the engine: in-flight streams and prepares end in their cancelled terminal, in-flight runs finish, artifacts are released. The handle **stays closed** — later calls fail with `Unavailable` (`details.code: "engine_closed"`) and `checkCapabilities()` reports no providers. Create a new handle to start over. Closing a handle that never configured does nothing.
+- The low-level plugin methods `configure(options)`, `startStream(options)`, `startPrepare(options)`, `cancelStream(options)`, `readArtifact(request)`, `disposeArtifact(artifact)` and `close()` are also exported on `IndeRunCapacitor`, along with the listener event names `STREAM_EVENT_NAME` (`"indeRunStreamEvent"`) and `STREAM_ERROR_NAME` (`"indeRunStreamError"`).
+
+Each `configure()` builds **one engine** that every later call uses until the next `configure()`.
+Artifacts belong to that engine, and a provider that loads a model keeps it loaded there, which is
+why it is not rebuilt per call. A new `configure()` replaces the engine and closes the previous one
+(see `close()` above), resolving once that close has finished; a configuration that fails
+validation leaves the previous engine in place. The native plugin holds one engine at a time, so
+handles that configure differently replace each other's engine.
 
 > The two listener event names are **public contract**. Native emits exactly these, and an
 > app may attach its own listener to them; renaming one is a breaking change.
@@ -242,22 +253,25 @@ through `configure()`, never the fixture runtime the upstream demos use offline.
 only when the weights are there; a provider that cannot load turns a clean routing refusal
 into a provider error.
 
-Two asymmetries in the low-level surface, both hidden by the ergonomic API:
+Three asymmetries in the low-level surface, all hidden by the ergonomic API:
 
 - `run(request)` passes the request at the options root, while
-  `startStream({ streamId, request })` nests it, because that envelope also carries the
-  bridge-local correlation id. `stream()` hides this.
+  `startStream({ streamId, request })` and `startPrepare({ streamId, request })` nest it,
+  because that envelope also carries the bridge-local correlation id. `stream()` and
+  `prepare()` hide this. A prepare run is delivered on the same two listener events and
+  cancelled through the same `cancelStream({ streamId })` as a stream.
+- The plugin method `readArtifact` resolves `bytes` as a **base64 string** on iOS and Android,
+  because a Capacitor native call resolves JSON, which has no byte type; the web plugin resolves
+  the engine's `Uint8Array`. `IndeRunCapacitor.readArtifact()` decodes either into a
+  `Uint8Array`. Base64 is transport only: results still carry artifact handles, never bytes.
 - The plugin method `checkCapabilities()` resolves `{ providers: [...] }` rather than the
   array itself, because a Capacitor plugin method cannot resolve a top-level array on
   either native platform. `IndeRunCapacitor.checkCapabilities()` unwraps it, so app code
   sees the same array the three platform SDKs return.
 
 `ProviderCapabilitySnapshot` and the `ProviderDescriptor` /
-`ProviderDynamicCapabilities` it contains are declared in `src/definitions.ts` rather than
-imported, because — unlike `TaskRequest` or `StreamEvent` — they are not generated
-contracts: each platform SDK declares its own copy and there is no schema or validator for
-them upstream. `src/web.ts` returns the web SDK's snapshots into the bridge's type uncast,
-so the shapes staying identical is a compile error rather than a convention. Note
+`ProviderDynamicCapabilities` it contains are the generated contract types from
+`@independo/inderun-contracts`, like `TaskRequest` or `StreamEvent`. Note
 `capabilities.streamingAvailable` and `cancellationAvailable` are **absent**, not `null`,
 when the runtime has nothing to add: absence means *inherit the static declaration*.
 

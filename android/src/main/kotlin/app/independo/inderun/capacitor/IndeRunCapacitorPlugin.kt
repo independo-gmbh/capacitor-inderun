@@ -4,6 +4,7 @@ import app.independo.inderun.contracts.IndeRunError
 import app.independo.inderun.core.IndeRunException
 import app.independo.inderun.core.ModelProfiles
 import app.independo.inderun.core.ProviderRegistry
+import app.independo.inderun.core.StreamRun
 import app.independo.inderun.core.toIndeRunException
 import app.independo.inderun.providers.mlkit.AndroidProviderRegistryFactory
 import app.independo.inderun.providers.openai.DEFAULT_OPENAI_RESPONSES_ENDPOINT
@@ -16,30 +17,46 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 @CapacitorPlugin(name = "IndeRunCapacitor")
 class IndeRunCapacitorPlugin : Plugin() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var configuredRegistry: ProviderRegistry? = null
-    private var configuredModelProfiles = ModelProfiles()
+
+    /**
+     * The one engine every call uses, built by [configure] and kept until the next one.
+     * Long-lived on purpose: artifacts are engine-owned and die with the engine, and a provider
+     * that loads a model keeps it loaded only as long as its engine is in use. Atomic, because
+     * Capacitor calls plugin methods on its own thread while the calls run on [scope].
+     */
+    private val engine = AtomicReference<IndeRun?>(null)
     private val streams = IndeRunStreamRegistry()
 
+    /**
+     * Resolves once the engine this configuration replaces has closed: its streams and prepares
+     * have reached their cancelled terminal and its in-flight runs have finished. New calls reach
+     * the new engine at once.
+     */
     @PluginMethod
     fun configure(call: PluginCall) {
         try {
             val options = IndeRunSerializer.parseConfigureOptions(call.data)
-            // Validated before anything is replaced, so a refused configuration leaves the
-            // previous one in place rather than half of each.
+            // Validated and built before anything is replaced, so a refused configuration leaves
+            // the previous engine in place rather than half of each.
             val modelProfiles = options.modelProfiles?.let(::ModelProfiles) ?: ModelProfiles()
-            configuredRegistry = createRegistry(options.openAI)
-            configuredModelProfiles = modelProfiles
-            call.resolve()
+            val registry = createRegistry(options.openAI)
+            val previous = engine.getAndSet(IndeRun.initialize(context.applicationContext, registry, modelProfiles))
+            scope.launch {
+                previous?.close()
+                call.resolve()
+            }
         } catch (error: IndeRunException) {
             val contractError = error.toContractError()
             call.reject(
@@ -66,11 +83,9 @@ class IndeRunCapacitorPlugin : Plugin() {
 
         scope.launch {
             try {
-                val registry = configuredRegistry
-                    ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling run(request)."))
+                val engine = requireEngine("run(request)")
                 val request = IndeRunSerializer.parseTaskRequest(requestJson)
-                // IndeRun is stateless; new per call is intentional — registry is cached after configure().
-                val result = IndeRun.initialize(context.applicationContext, registry, configuredModelProfiles).run(request)
+                val result = engine.run(request)
                 call.resolve(IndeRunSerializer.encodeTaskResult(result))
             } catch (error: IndeRunException) {
                 val contractError = error.toContractError()
@@ -102,10 +117,7 @@ class IndeRunCapacitorPlugin : Plugin() {
     fun checkCapabilities(call: PluginCall) {
         scope.launch {
             try {
-                val registry = configuredRegistry
-                    ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling checkCapabilities()."))
-                // IndeRun is stateless; new per call is intentional — registry is cached after configure().
-                val snapshots = IndeRun.initialize(context.applicationContext, registry, configuredModelProfiles).checkCapabilities()
+                val snapshots = requireEngine("checkCapabilities()").checkCapabilities()
                 call.resolve(IndeRunSerializer.encodeCapabilitySnapshots(snapshots))
             } catch (error: IndeRunException) {
                 val contractError = error.toContractError()
@@ -140,16 +152,39 @@ class IndeRunCapacitorPlugin : Plugin() {
      */
     @PluginMethod
     fun startStream(call: PluginCall) {
+        startBridgedRun(call, "startStream", "stream(request)") { engine, requestJson ->
+            engine.stream(IndeRunSerializer.parseTaskRequest(requestJson))
+        }
+    }
+
+    /**
+     * Delivered exactly like [startStream] — same notifications, same [cancelStream] — because
+     * upstream's `prepare` returns the same `StreamRun`.
+     */
+    @PluginMethod
+    fun startPrepare(call: PluginCall) {
+        startBridgedRun(call, "startPrepare", "prepare(request)") { engine, requestJson ->
+            engine.prepare(IndeRunSerializer.parsePrepareRequest(requestJson))
+        }
+    }
+
+    private fun startBridgedRun(
+        call: PluginCall,
+        method: String,
+        engineCall: String,
+        start: suspend (IndeRun, JSONObject) -> StreamRun
+    ) {
         val streamId = call.getString("streamId")
         if (streamId == null) {
-            rejectContractError(call, IllegalArgumentException("startStream requires a streamId."))
+            rejectContractError(call, IllegalArgumentException("$method requires a streamId."))
             return
         }
-        // Unlike run(request), which takes the request at the options root, startStream
-        // nests it under `request` so the envelope can also carry the bridge-local streamId.
+        // Unlike run(request), which takes the request at the options root, startStream and
+        // startPrepare nest it under `request` so the envelope can also carry the bridge-local
+        // streamId.
         val requestJson = call.getObject("request")
         if (requestJson == null) {
-            rejectContractError(call, IllegalArgumentException("startStream requires a request."))
+            rejectContractError(call, IllegalArgumentException("$method requires a request."))
             return
         }
 
@@ -160,11 +195,7 @@ class IndeRunCapacitorPlugin : Plugin() {
         val job = scope.launch {
             var resolved = false
             try {
-                val registry = configuredRegistry
-                    ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling stream(request)."))
-                val request = IndeRunSerializer.parseTaskRequest(requestJson)
-                // IndeRun is stateless; new per call is intentional — registry is cached after configure().
-                val streamRun = IndeRun.initialize(context.applicationContext, registry, configuredModelProfiles).stream(request)
+                val streamRun = start(requireEngine(engineCall), requestJson)
 
                 val outcome = streams.attach(streamId, streamRun)
                 if (outcome is AttachOutcome.CancelRequested) {
@@ -226,12 +257,71 @@ class IndeRunCapacitorPlugin : Plugin() {
         call.resolve()
     }
 
+    /** Like `run(request)`, the request arrives at the options root. Resolves `bytes` as base64. */
+    @PluginMethod
+    fun readArtifact(call: PluginCall) {
+        val requestJson = call.data
+        scope.launch {
+            try {
+                val engine = requireEngine("readArtifact(request)")
+                val chunk = engine.readArtifact(IndeRunSerializer.parseArtifactReadRequest(requestJson))
+                call.resolve(IndeRunSerializer.encodeArtifactChunk(chunk))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                rejectContractError(call, error)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun disposeArtifact(call: PluginCall) {
+        val artifactJson = call.data
+        scope.launch {
+            try {
+                val engine = requireEngine("disposeArtifact(artifact)")
+                engine.disposeArtifact(IndeRunSerializer.parseMediaArtifact(artifactJson))
+                call.resolve()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                rejectContractError(call, error)
+            }
+        }
+    }
+
+    /**
+     * Closes the configured engine and keeps it, so every later call fails the way the closed
+     * engine fails it (`engine_closed`) until [configure] installs a new one. Nothing configured
+     * is nothing to close.
+     */
+    @PluginMethod
+    fun close(call: PluginCall) {
+        scope.launch {
+            try {
+                engine.get()?.close()
+                call.resolve()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                rejectContractError(call, error)
+            }
+        }
+    }
+
     override fun handleOnDestroy() {
         // Runs first, so providers unwind before the scope that collects them goes away.
         streams.cancelAll("Capacitor plugin destroyed.")
         scope.cancel()
+        // Closed outside the cancelled scope, without waiting: nobody is left to wait, and
+        // the main thread must not block on in-flight runs.
+        engine.get()?.let { closing -> CoroutineScope(Dispatchers.Default).launch { closing.close() } }
         super.handleOnDestroy()
     }
+
+    /** The configured engine, closed or not: a closed one answers each call the way upstream defines. */
+    private fun requireEngine(call: String): IndeRun = engine.get()
+        ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling $call."))
 
     private fun contractErrorFor(error: Throwable): IndeRunError = when (error) {
         is IndeRunException -> error.toContractError()

@@ -49,25 +49,33 @@ struct CapacitorStartStreamOptions: Codable {
     let request: TaskRequest
 }
 
+/// `startPrepare` mirrors `startStream`: the `PrepareRequest` nested under `request`, beside
+/// the bridge-local `streamId`. See `StartPrepareOptions` in src/definitions.ts.
+struct CapacitorStartPrepareOptions: Codable {
+    let streamId: String
+    let request: PrepareRequest
+}
+
 struct CapacitorCancelStreamOptions: Codable {
     let streamId: String
     let reason: String?
 }
 
-/// IndeRunCore's `ProviderCapabilitySnapshot` is `Sendable` but not `Codable`, even
-/// though both of its members are. This mirror exists only to get it through
-/// `JSONEncoder`; see the upstream follow-up asking for `Codable` (and a schema) on
-/// the snapshot itself.
-private struct EncodableCapabilitySnapshot: Encodable {
-    let providerId: String
-    let descriptor: ProviderDescriptor
-    let capabilities: ProviderDynamicCapabilities
-}
-
 /// A Capacitor plugin method must resolve an object, never a top-level array, so the
 /// snapshots travel wrapped. `IndeRunCapacitor` unwraps them on the JS side.
 private struct CapabilitiesEnvelope: Encodable {
-    let providers: [EncodableCapabilitySnapshot]
+    let providers: [ProviderCapabilitySnapshot]
+}
+
+/// `ArtifactChunk` as it crosses the bridge: a Capacitor call resolves JSON, which has no
+/// byte type, so `bytes` travels as base64. Transport only; see `BridgedArtifactChunk` in
+/// src/definitions.ts, which decodes it back.
+private struct BridgedArtifactChunk: Encodable {
+    let artifactId: String
+    let offset: Int
+    let bytes: String
+    let totalBytes: Int
+    let done: Bool
 }
 
 /// Called with an already-encoded event/error for one run. The plugin turns these
@@ -77,44 +85,63 @@ typealias StreamEventSink = @Sendable (String, JSObject) -> Void
 typealias StreamErrorSink = @Sendable (String, JSObject) -> Void
 
 final class IndeRunCapacitorBridge {
-    private var configuredRegistry: ProviderRegistry?
-    private var configuredHostServices: HostServices?
-    private var configuredModelProfiles: ModelProfiles = .none
+    /// The one engine every call uses, built by `configure` and kept until the next one.
+    /// Long-lived on purpose: artifacts are engine-owned and die with the engine, and a
+    /// provider that loads a model keeps it loaded only as long as its engine is in use.
+    /// Locked, because the plugin calls in from tasks of its own.
+    private let engineLock = NSLock()
+    private var engine: IndeRun?
     let streams = StreamRegistry()
 
     deinit {
         streams.cancelAll(reason: "Capacitor bridge deallocated.")
+        if let engine {
+            Task { await engine.close() }
+        }
     }
 
-    func configure(options: JSObject) throws {
+    func configure(options: JSObject) async throws {
         let runOptions = try decodeConfigureOptions(from: options)
-        // Validated before anything is replaced, so a refused configuration leaves the
-        // previous one in place rather than half of each.
+        // Validated and built before anything is replaced, so a refused configuration
+        // leaves the previous engine in place rather than half of each.
         let modelProfiles = try makeModelProfiles(runOptions.modelProfiles)
-        configuredRegistry = try makeRegistry(openAI: runOptions.openAI)
-        configuredHostServices = DefaultHostServices.make()
-        configuredModelProfiles = modelProfiles
+        let registry = try makeRegistry(openAI: runOptions.openAI)
+        await install(
+            engine: IndeRun(registry: registry, hostServices: DefaultHostServices.make(), modelProfiles: modelProfiles)
+        )
+    }
+
+    /// Makes `engine` the one every later call uses, then closes the one it replaces. New
+    /// calls reach the new engine at once; this returns when the old one has closed, which
+    /// upstream defines as its streams and prepares ending in their cancelled terminal and
+    /// its in-flight runs finishing -- no longer.
+    func install(engine newEngine: IndeRun) async {
+        let previous = engineLock.withLock {
+            let previous = engine
+            engine = newEngine
+            return previous
+        }
+        await previous?.close()
+    }
+
+    /// The configured engine, closed or not: a closed one answers every call the way
+    /// upstream defines (`engine_closed`), which is what the bridge reports.
+    private func requireEngine(before call: String) throws -> IndeRun {
+        guard let engine = engineLock.withLock({ engine }) else {
+            throw createUnavailable(message: "Capacitor IndeRun has not been configured. Configure providers before calling \(call).")
+        }
+        return engine
     }
 
     func run(requestObject: JSObject) async throws -> JSObject {
-        guard let registry = configuredRegistry, let hostServices = configuredHostServices else {
-            throw createUnavailable(message: "Capacitor IndeRun has not been configured. Configure providers before calling run(request).")
-        }
-
+        let engine = try requireEngine(before: "run(request)")
         let request = try decodeRequest(from: requestObject)
-        // IndeRun is a stateless coordinator; new per call is intentional — registry is cached above.
-        let engine = makeEngine(registry: registry, hostServices: hostServices)
         let result = try await engine.run(request: request)
         return try encode(result)
     }
 
     func checkCapabilities() async throws -> JSObject {
-        guard let registry = configuredRegistry, let hostServices = configuredHostServices else {
-            throw createUnavailable(message: "Capacitor IndeRun has not been configured. Configure providers before calling checkCapabilities().")
-        }
-
-        // IndeRun is a stateless coordinator; new per call is intentional — registry is cached above.
-        let engine = makeEngine(registry: registry, hostServices: hostServices)
+        let engine = try requireEngine(before: "checkCapabilities()")
         return try encode(capabilities: await engine.checkCapabilities())
     }
 
@@ -123,30 +150,49 @@ final class IndeRunCapacitorBridge {
         onEvent: @escaping StreamEventSink,
         onError: @escaping StreamErrorSink
     ) async throws -> JSObject {
-        guard let registry = configuredRegistry, let hostServices = configuredHostServices else {
-            throw createUnavailable(message: "Capacitor IndeRun has not been configured. Configure providers before calling stream(request).")
-        }
-
+        let engine = try requireEngine(before: "stream(request)")
         let start = try decodeStartStreamOptions(from: options)
+        return try await startBridgedRun(streamId: start.streamId, onEvent: onEvent, onError: onError) {
+            try await engine.stream(request: start.request)
+        }
+    }
+
+    /// A prepare run is a `StreamRun` upstream, so it is registered, pumped and cancelled
+    /// exactly like a stream.
+    func startPrepare(
+        options: JSObject,
+        onEvent: @escaping StreamEventSink,
+        onError: @escaping StreamErrorSink
+    ) async throws -> JSObject {
+        let engine = try requireEngine(before: "prepare(request)")
+        let start = try decodeStartPrepareOptions(from: options)
+        return try await startBridgedRun(streamId: start.streamId, onEvent: onEvent, onError: onError) {
+            try await engine.prepare(request: start.request)
+        }
+    }
+
+    private func startBridgedRun(
+        streamId: String,
+        onEvent: @escaping StreamEventSink,
+        onError: @escaping StreamErrorSink,
+        start: () async throws -> StreamRun
+    ) async throws -> JSObject {
         // Reserved before the engine is reached, so a cancel arriving during route
         // selection is recorded rather than dropped as an unknown id.
-        streams.open(streamId: start.streamId)
+        streams.open(streamId: streamId)
 
         let run: StreamRun
         do {
-            // IndeRun is a stateless coordinator; new per call is intentional — registry is cached above.
-            let engine = makeEngine(registry: registry, hostServices: hostServices)
-            run = try await engine.stream(request: start.request)
+            run = try await start()
         } catch {
-            streams.finish(streamId: start.streamId)
+            streams.finish(streamId: streamId)
             throw error
         }
 
-        if case .cancelRequested(let reason) = streams.attach(streamId: start.streamId, run: run) {
+        if case .cancelRequested(let reason) = streams.attach(streamId: streamId, run: run) {
             run.cancel(reason: reason)
         }
 
-        let streamId = start.streamId
         // Weak, so a live run cannot keep the bridge alive past the plugin's deinit;
         // the plugin's teardown cancels these tasks, which then release the bridge.
         let task = Task { [weak self] in
@@ -163,8 +209,33 @@ final class IndeRunCapacitorBridge {
         streams.requestCancel(streamId: cancel.streamId, reason: cancel.reason)
     }
 
-    func teardownStreams() {
+    /// Like `run(request)`, the request arrives at the options root.
+    func readArtifact(requestObject: JSObject) async throws -> JSObject {
+        let engine = try requireEngine(before: "readArtifact(request)")
+        let request = try decodeObject(ArtifactReadRequest.self, from: requestObject)
+        return try encode(chunk: try await engine.readArtifact(request: request))
+    }
+
+    func disposeArtifact(artifactObject: JSObject) async throws {
+        let engine = try requireEngine(before: "disposeArtifact(artifact)")
+        let artifact = try decodeObject(MediaArtifact.self, from: artifactObject)
+        await engine.disposeArtifact(artifact: artifact)
+    }
+
+    /// Closes the configured engine and keeps it, so every later call fails the way the
+    /// closed engine fails it until `configure` installs a new one. Nothing configured is
+    /// nothing to close.
+    func close() async {
+        await engineLock.withLock({ engine })?.close()
+    }
+
+    /// Plugin teardown: stops the runs the webview can no longer receive, then closes the
+    /// engine without waiting for it -- nobody is left to wait.
+    func teardown() {
         streams.cancelAll(reason: "Capacitor plugin torn down.")
+        if let engine = engineLock.withLock({ engine }) {
+            Task { await engine.close() }
+        }
     }
 
     /// Forwards one run's canonical events to the sink until the stream ends.
@@ -214,15 +285,17 @@ final class IndeRunCapacitorBridge {
     /// an absent key rather than a null, which is what lets the JS side read absence as
     /// "inherit `descriptor.supports.streaming`".
     func encode(capabilities: [ProviderCapabilitySnapshot]) throws -> JSObject {
+        try encodeObject(CapabilitiesEnvelope(providers: capabilities))
+    }
+
+    func encode(chunk: ArtifactChunk) throws -> JSObject {
         try encodeObject(
-            CapabilitiesEnvelope(
-                providers: capabilities.map {
-                    EncodableCapabilitySnapshot(
-                        providerId: $0.providerId,
-                        descriptor: $0.descriptor,
-                        capabilities: $0.capabilities
-                    )
-                }
+            BridgedArtifactChunk(
+                artifactId: chunk.artifactId,
+                offset: chunk.offset,
+                bytes: chunk.bytes.base64EncodedString(),
+                totalBytes: chunk.totalBytes,
+                done: chunk.done
             )
         )
     }
@@ -236,10 +309,6 @@ final class IndeRunCapacitorBridge {
             // error without the reason.
             throw createInternal(message: error.description)
         }
-    }
-
-    private func makeEngine(registry: ProviderRegistry, hostServices: HostServices) -> IndeRun {
-        IndeRun(registry: registry, hostServices: hostServices, modelProfiles: configuredModelProfiles)
     }
 
     func makeRegistry(openAI: OpenAIProviderBootstrapOptions?) throws -> ProviderRegistry {
@@ -276,6 +345,15 @@ final class IndeRunCapacitorBridge {
     private func decodeStartStreamOptions(from object: JSObject) throws -> CapacitorStartStreamOptions {
         let data = try JSONSerialization.data(withJSONObject: object, options: [])
         return try JSONDecoder().decode(CapacitorStartStreamOptions.self, from: data)
+    }
+
+    private func decodeStartPrepareOptions(from object: JSObject) throws -> CapacitorStartPrepareOptions {
+        try decodeObject(CapacitorStartPrepareOptions.self, from: object)
+    }
+
+    private func decodeObject<T: Decodable>(_ type: T.Type, from object: JSObject) throws -> T {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [])
+        return try JSONDecoder().decode(type, from: data)
     }
 
     private func decodeCancelStreamOptions(from object: JSObject) throws -> CapacitorCancelStreamOptions {

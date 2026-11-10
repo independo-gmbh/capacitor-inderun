@@ -5,9 +5,14 @@
   `OpenAIProviderBootstrapOptions`, `IndeRunCapacitorPlugin`, and the Mode 2 envelopes), `index.ts`
   (registers the Capacitor plugin via `registerPlugin`, exposes `IndeRunCapacitor` and the
   `createIndeRunCapacitor()` helper that lazily configures and memoizes), `streaming.ts` (the Mode 2
-  reassembly: `StreamSink`, `StreamDispatcher`, `startCapacitorStream`), `errors.ts`
+  reassembly: `StreamSink`, `StreamDispatcher`, `startCapacitorStream`, `startCapacitorPrepare`),
+  `artifacts.ts` (`decodeArtifactChunk`: native sends artifact bytes as base64), `errors.ts`
   (`normalizePluginError`, `createBridgeError`), `web.ts` (the web fallback implementation,
   `IndeRunWeb`, wired to `@independo/inderun-web`).
+- Each platform holds **one engine per `configure()`** and reuses it for every call: artifacts
+  are engine-owned, and providers that load a model keep it loaded in that engine. A new
+  `configure()` closes the engine it replaces; plugin teardown closes it too. Do not go back to
+  building an engine per call.
 - Native implementations live in `android/` (Gradle module, plugin entry under
   `android/src/main/`, with `IndeRunStreamRegistry.kt` tracking live streaming runs) and
   `ios/Sources/IndeRunCapacitorPlugin/` (`IndeRunCapacitorPlugin.swift` is the Capacitor plugin

@@ -1,7 +1,13 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import type {
+  ArtifactReadRequest,
   IndeRunError,
+  MediaArtifact,
   ModelPackage,
+  PrepareRequest,
+  ProviderCapabilitySnapshot,
+  ProviderDescriptor,
+  ProviderDynamicCapabilities,
   StreamEvent,
   StreamRunHandle,
   TaskRequest,
@@ -98,6 +104,18 @@ export interface StartStreamOptions {
   request: TaskRequest;
 }
 
+/**
+ * Envelope for `startPrepare`: the same shape as `StartStreamOptions`, carrying a
+ * `PrepareRequest` instead of a `TaskRequest`. A prepare run is delivered exactly like a
+ * stream — the same `"indeRunStreamEvent"` / `"indeRunStreamError"` notifications keyed by
+ * `streamId`, cancelled through the same `cancelStream` — because upstream returns the same
+ * `StreamRun` from both.
+ */
+export interface StartPrepareOptions {
+  streamId: string;
+  request: PrepareRequest;
+}
+
 export interface CancelStreamOptions {
   streamId: string;
   reason?: string;
@@ -131,123 +149,64 @@ export interface StreamRun {
 }
 
 /**
- * A provider's static capability declaration.
+ * One range of an engine-owned media artifact's bytes, as `readArtifact` returns it (ADR 017).
  *
- * Declared here rather than imported, because — unlike `TaskRequest`, `StreamEvent` and
- * the rest — this shape is *not* a generated contract. There is no schema for it in
- * `@independo/inderun-contracts` and no validator; each SDK declares it independently
- * (`core/provider.d.ts` in `@independo/inderun-web`, `IndeRunCore/Provider.swift`,
- * `core/Provider.kt`), and this is the fourth copy. Importing it from
- * `@independo/inderun-web` is not an option either: that would make the native
- * platforms' plugin contract depend on the web SDK.
- *
- * The drift guard is in `web.ts`, which returns the web SDK's value into this type
- * uncast — so `tsc` proves the shapes still match on every build, the same way the
- * `StreamRun` mirror below is checked. See the upstream follow-up asking for a schema.
+ * Declared here rather than imported: it is not a generated contract — each SDK declares its
+ * own (`core/artifacts.d.ts` in `@independo/inderun-web`) — and importing it from the web SDK
+ * would make the native platforms' plugin contract depend on it. The drift guard is in
+ * `index.ts`, which checks that `IndeRunCapacitorInstance` stays assignable to the web SDK's
+ * `IndeRunApi`, whose `readArtifact` returns the web SDK's chunk.
  */
-export interface ProviderDescriptor {
-  id: string;
-  /**
-   * The model this target is bound to, as the provider names it. Absent when the provider
-   * cannot name one — a platform-managed on-device model reports nothing rather than a
-   * guessed weight name.
-   */
-  model?: string;
-  type: "local" | "edge" | "cloud";
-  transport: "in_process" | "system_service" | "http" | "sse" | "realtime";
-  streamingStyle?: "tokens" | "chunks" | "snapshots";
-  supports: {
-    run: boolean;
-    streaming: boolean;
-    realtime: boolean;
-    tools: boolean;
-    reasoningEvents: boolean;
-    structuredOutput: boolean;
-    multimodal: boolean;
-  };
-  cancel: "hard" | "soft" | "none";
-  tasks: string[];
-  limits?: {
-    maxInputTokens?: number;
-    maxOutputTokens?: number;
-    maxImageBytes?: number;
-    maxAudioSeconds?: number;
-  };
-  privacy?: ProviderPrivacy;
-  /**
-   * Per-task static capabilities. Authoritative for routing when present; absent on a
-   * legacy descriptor, where only `text_to_text` is inferred from the fields above.
-   */
-  taskCapabilities?: ProviderTaskCapability[];
-}
-
-export interface ProviderPrivacy {
-  dataLeavesDevice: boolean;
-  regions?: string[];
-}
-
-/** The provider's static capabilities for one task kind. */
-export interface ProviderTaskCapability {
-  kind: string;
-  inputs: ("text" | "image" | "audio")[];
-  interaction: { run: boolean; stream: boolean; prepare?: boolean };
-  cancel: "hard" | "soft" | "none";
-  outputs: { delivery: "inline" | "playback" | "artifact"; mediaTypes?: string[] }[];
-  locales?: string[];
-  privacy?: ProviderPrivacy;
-}
-
-/** How ready a task (or a voice) is on this host: whether using it would first need preparing. */
-export type ProviderReadiness = "ready" | "cold" | "not_prepared" | "preparing";
-
-/** One speech voice a provider can render, as listed at `checkCapabilities()` time. */
-export interface ProviderVoice {
-  locale: string;
-  id?: string;
-  name?: string;
-  gender?: "female" | "male" | "neutral";
-  locales?: string[];
-  networkRequired?: boolean;
-  readiness?: ProviderReadiness;
-}
-
-/** A provider's live availability for one task kind. Absent fields inherit the task-wide values. */
-export interface ProviderTaskAvailability {
-  kind: string;
-  available?: boolean;
-  cancellationAvailable?: boolean;
-  locales?: string[];
-  readiness?: ProviderReadiness;
-  reason?: string;
-  streamingAvailable?: boolean;
-  streamingUnavailableReason?: string;
-  voices?: ProviderVoice[];
+export interface ArtifactChunk {
+  /** The artifact the bytes belong to. */
+  artifactId: string;
+  /** Byte offset of `bytes` within the artifact. */
+  offset: number;
+  /** The bytes of this range; empty when `offset` is the artifact's end. */
+  bytes: Uint8Array;
+  /** Size of the whole artifact in bytes. */
+  totalBytes: number;
+  /** Whether this range reaches the end of the artifact. */
+  done: boolean;
 }
 
 /**
- * A provider's live availability, as of the moment `checkCapabilities()` was called.
- *
- * `streamingAvailable` and `cancellationAvailable` are **absent**, not `null`, when the
- * runtime has nothing to say: absence means *inherit the static declaration*
- * (`descriptor.supports.streaming`, and `descriptor.cancel !== "none"`). Both native
- * encoders omit the key rather than emitting null for exactly that reason.
+ * `ArtifactChunk` as it crosses the plugin boundary. A Capacitor native call resolves JSON,
+ * which cannot carry a byte array, so iOS and Android send `bytes` as a **base64 string**;
+ * the web implementation has no hop to cross and sends the engine's `Uint8Array` as is.
+ * `IndeRunCapacitor.readArtifact` and `createIndeRunCapacitor()` decode either form back into
+ * `ArtifactChunk`. Base64 is transport only: results still carry artifact handles, never bytes.
  */
-export interface ProviderDynamicCapabilities {
-  available: boolean;
-  reason?: string;
-  streamingAvailable?: boolean;
-  streamingUnavailableReason?: string;
-  cancellationAvailable?: boolean;
-  /** Per-task live availability, including `readiness`. Absent when the provider reports none. */
-  taskCapabilities?: ProviderTaskAvailability[];
+export interface BridgedArtifactChunk extends Omit<ArtifactChunk, "bytes"> {
+  bytes: string | Uint8Array;
 }
 
-/** One registered provider's identity, static declaration, and live availability. */
-export interface ProviderCapabilitySnapshot {
-  providerId: string;
-  descriptor: ProviderDescriptor;
-  capabilities: ProviderDynamicCapabilities;
-}
+/**
+ * The provider capability shapes `checkCapabilities()` returns.
+ *
+ * These were hand-written mirrors while the snapshot had no schema; it is now a generated
+ * contract (`provider-capability-snapshot.schema.json`), so the bridge uses the contract's
+ * types and names the nested ones here. That is also what keeps the bridge assignable to the
+ * web SDK's `IndeRunApi`, whose `checkCapabilities()` returns exactly these.
+ */
+export type { ProviderCapabilitySnapshot, ProviderDescriptor, ProviderDynamicCapabilities };
+
+/** The provider's static capabilities for one task kind. */
+export type ProviderTaskCapability = NonNullable<ProviderDescriptor["taskCapabilities"]>[number];
+
+/** Whether data leaves the device, and where it may go. */
+export type ProviderPrivacy = NonNullable<ProviderDescriptor["privacy"]>;
+
+/** A provider's live availability for one task kind. Absent fields inherit the task-wide values. */
+export type ProviderTaskAvailability = NonNullable<
+  ProviderDynamicCapabilities["taskCapabilities"]
+>[number];
+
+/** One speech voice a provider can render, as listed at `checkCapabilities()` time. */
+export type ProviderVoice = NonNullable<ProviderTaskAvailability["voices"]>[number];
+
+/** How ready a task (or a voice) is on this host: whether using it would first need preparing. */
+export type ProviderReadiness = NonNullable<ProviderTaskAvailability["readiness"]>;
 
 /**
  * Envelope for `checkCapabilities()`. The array is wrapped because a Capacitor plugin
@@ -261,6 +220,13 @@ export interface CheckCapabilitiesResult {
 }
 
 export interface IndeRunCapacitorPlugin {
+  /**
+   * Builds one engine for this configuration, which every later call uses until the next
+   * `configure()`. Engine-owned artifacts live in that engine, and providers that load a
+   * model keep it loaded there. A new configuration replaces the engine and closes the
+   * previous one (see `close()`), resolving once that close has finished; a configuration
+   * that fails validation leaves the previous engine in place.
+   */
   configure(options?: ConfigureOptions): Promise<void>;
   run(request: TaskRequest): Promise<TaskResult>;
   /**
@@ -275,7 +241,30 @@ export interface IndeRunCapacitorPlugin {
    * carry a matching comment.
    */
   startStream(options: StartStreamOptions): Promise<StreamRunHandle>;
+  /**
+   * Starts a prepare run (ADR 019): makes registered providers ready ahead of a run without
+   * producing output. Delivered and cancelled exactly like `startStream` — events on
+   * `"indeRunStreamEvent"` keyed by `streamId`, ending in one terminal event whose output
+   * lists each preparation item; `cancelStream({ streamId })` cancels it.
+   */
+  startPrepare(options: StartPrepareOptions): Promise<StreamRunHandle>;
   cancelStream(options: CancelStreamOptions): Promise<void>;
+  /**
+   * Reads a byte range of an engine-owned media artifact a run produced. Like `run(request)`,
+   * the request is passed at the options root. See `BridgedArtifactChunk` for how `bytes`
+   * crosses the boundary.
+   */
+  readArtifact(request: ArtifactReadRequest): Promise<BridgedArtifactChunk>;
+  /** Releases an engine-owned artifact's bytes. Idempotent; the artifact is passed at the options root. */
+  disposeArtifact(artifact: MediaArtifact): Promise<void>;
+  /**
+   * Closes the engine the last `configure()` built: in-flight streams and prepares end in their
+   * cancelled terminal, in-flight runs finish, engine-owned artifacts are disposed. Every later
+   * call fails the way the closed engine fails it (`Unavailable`, `details.code:
+   * "engine_closed"`; `checkCapabilities()` reports no providers) until `configure()` builds a
+   * new one. Closing an unconfigured or already closed plugin does nothing.
+   */
+  close(): Promise<void>;
   addListener(
     eventName: "indeRunStreamEvent",
     listenerFunc: (notification: StreamEventNotification) => void

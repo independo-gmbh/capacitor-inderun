@@ -3,14 +3,16 @@ import { WebPlugin } from "@capacitor/core";
 import { createIndeRunWeb, toIndeRunException } from "@independo/inderun-web";
 import { createUnavailable } from "@independo/inderun-web/provider";
 import type {
+  BridgedArtifactChunk,
   CancelStreamOptions,
   CheckCapabilitiesResult,
   ConfigureOptions,
   IndeRunCapacitorPlugin,
+  StartPrepareOptions,
   StartStreamOptions,
   StreamRun
 } from "./definitions.js";
-import type { TaskRequest } from "@independo/inderun-contracts";
+import type { ArtifactReadRequest, MediaArtifact, TaskRequest } from "@independo/inderun-contracts";
 import type { CreateIndeRunWebOptions, IndeRun } from "@independo/inderun-web";
 import { STREAM_ERROR_NAME, STREAM_EVENT_NAME } from "./streaming.js";
 
@@ -56,7 +58,11 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
         webOptions.allowDirectOpenAIEndpoint = options.allowDirectOpenAIEndpoint;
       }
 
+      const previous = this.engine;
       this.engine = createIndeRunWeb(webOptions);
+      // One engine per configuration: the old one's streams end in their cancelled
+      // terminal and its artifacts are released, as on native.
+      await previous?.close();
     } catch (error) {
       throw toIndeRunException(error).toContractError();
     }
@@ -84,9 +90,8 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
     }
 
     try {
-      // Deliberately uncast: the engine's snapshots are assigned straight into the
-      // bridge's own `ProviderCapabilitySnapshot`, so the two declarations staying
-      // identical is a compile error rather than a convention. See definitions.ts.
+      // Uncast: the engine's snapshots are the generated contract type the bridge
+      // declares too. See definitions.ts.
       return { providers: await this.engine.checkCapabilities() };
     } catch (error) {
       throw toIndeRunException(error).toContractError();
@@ -103,34 +108,82 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
    * loss of generator backpressure that the native paths have regardless.
    */
   async startStream(options: StartStreamOptions): Promise<StreamRunHandle> {
+    const engine = this.requireEngine("stream(request)");
+    return this.startBridgedRun(options.streamId, () => engine.stream(options.request));
+  }
+
+  /** Delivered exactly like `startStream`; see there. */
+  async startPrepare(options: StartPrepareOptions): Promise<StreamRunHandle> {
+    const engine = this.requireEngine("prepare(request)");
+    return this.startBridgedRun(options.streamId, () => engine.prepare(options.request));
+  }
+
+  async readArtifact(request: ArtifactReadRequest): Promise<BridgedArtifactChunk> {
+    const engine = this.requireEngine("readArtifact(request)");
+    try {
+      // The engine's bytes as they are: there is no JSON hop to base64-encode for.
+      return await engine.readArtifact(request);
+    } catch (error) {
+      throw toIndeRunException(error).toContractError();
+    }
+  }
+
+  async disposeArtifact(artifact: MediaArtifact): Promise<void> {
+    const engine = this.requireEngine("disposeArtifact(artifact)");
+    try {
+      await engine.disposeArtifact(artifact);
+    } catch (error) {
+      throw toIndeRunException(error).toContractError();
+    }
+  }
+
+  /**
+   * Keeps the closed engine rather than dropping it, so every later call fails the way
+   * the engine fails it (`engine_closed`) until `configure()` builds a new one.
+   */
+  async close(): Promise<void> {
+    try {
+      await this.engine?.close();
+    } catch (error) {
+      throw toIndeRunException(error).toContractError();
+    }
+  }
+
+  private requireEngine(method: string): IndeRun {
     if (!this.engine) {
       throw createUnavailable(
-        "Capacitor IndeRun has not been configured. Configure providers before calling stream(request)."
+        `Capacitor IndeRun has not been configured. Configure providers before calling ${method}.`
       ).toContractError();
     }
+    return this.engine;
+  }
 
-    this.startingStreams.add(options.streamId);
+  private async startBridgedRun(
+    streamId: string,
+    start: () => Promise<StreamRun>
+  ): Promise<StreamRunHandle> {
+    this.startingStreams.add(streamId);
 
     let run: StreamRun;
     try {
-      run = await this.engine.stream(options.request);
+      run = await start();
     } catch (error) {
-      this.startingStreams.delete(options.streamId);
-      this.pendingCancels.delete(options.streamId);
+      this.startingStreams.delete(streamId);
+      this.pendingCancels.delete(streamId);
       throw toIndeRunException(error).toContractError();
     }
 
-    this.startingStreams.delete(options.streamId);
-    this.activeStreams.set(options.streamId, run);
+    this.startingStreams.delete(streamId);
+    this.activeStreams.set(streamId, run);
 
-    if (this.pendingCancels.has(options.streamId)) {
-      const reason = this.pendingCancels.get(options.streamId);
-      this.pendingCancels.delete(options.streamId);
+    if (this.pendingCancels.has(streamId)) {
+      const reason = this.pendingCancels.get(streamId);
+      this.pendingCancels.delete(streamId);
       run.cancel(reason);
     }
 
     // Pump on a later microtask so this call's handle settles first.
-    queueMicrotask(() => void this.pump(options.streamId, run));
+    queueMicrotask(() => void this.pump(streamId, run));
     return run.handle;
   }
 

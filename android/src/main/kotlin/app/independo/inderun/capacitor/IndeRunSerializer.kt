@@ -1,11 +1,16 @@
 package app.independo.inderun.capacitor
 
+import app.independo.inderun.contracts.ArtifactLifetime
+import app.independo.inderun.contracts.ArtifactOwner
+import app.independo.inderun.contracts.ArtifactReadRequest
 import app.independo.inderun.contracts.Cloud
 import app.independo.inderun.contracts.ExecutionProvenance
 import app.independo.inderun.contracts.FinishReason
 import app.independo.inderun.contracts.Generation
 import app.independo.inderun.contracts.IndeRunError
 import app.independo.inderun.contracts.IndeRunErrorClass
+import app.independo.inderun.contracts.LocaleMatch
+import app.independo.inderun.contracts.MediaArtifact
 import app.independo.inderun.contracts.Message
 import app.independo.inderun.contracts.MessageRole
 import app.independo.inderun.contracts.OptimizeFor
@@ -15,6 +20,10 @@ import app.independo.inderun.contracts.PayloadError
 import app.independo.inderun.contracts.PayloadTelemetry
 import app.independo.inderun.contracts.PayloadUsage
 import app.independo.inderun.contracts.Phase
+import app.independo.inderun.contracts.PlaybackOutput
+import app.independo.inderun.contracts.PreparationItem
+import app.independo.inderun.contracts.PrepareRequest
+import app.independo.inderun.contracts.PrepareVoice
 import app.independo.inderun.contracts.Privacy
 import app.independo.inderun.contracts.ProviderCapabilitySnapshot
 import app.independo.inderun.contracts.ProviderDescriptor
@@ -24,9 +33,11 @@ import app.independo.inderun.contracts.ProviderTaskAvailability
 import app.independo.inderun.contracts.ProviderTaskCapability
 import app.independo.inderun.contracts.ProviderVoice
 import app.independo.inderun.contracts.SchemaVersion
+import app.independo.inderun.contracts.SpeechOutput
 import app.independo.inderun.contracts.StreamEvent
 import app.independo.inderun.contracts.StreamRunHandle
 import app.independo.inderun.contracts.TaskKind
+import app.independo.inderun.contracts.TaskOutput
 import app.independo.inderun.contracts.TaskRequest
 import app.independo.inderun.contracts.TaskRequestConstraints
 import app.independo.inderun.contracts.TaskRequestPreferences
@@ -35,10 +46,13 @@ import app.independo.inderun.contracts.TaskRequestTelemetry
 import app.independo.inderun.contracts.TaskResult
 import app.independo.inderun.contracts.TaskResultTelemetry
 import app.independo.inderun.contracts.TelemetryLevel
+import app.independo.inderun.contracts.VoiceGender
+import app.independo.inderun.core.ArtifactChunk
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Base64
 
 /**
  * One OpenAI-compatible target is registered per entry in [models], with id `openai:<model>` --
@@ -83,17 +97,131 @@ object IndeRunSerializer {
         )
     }
 
+    fun parsePrepareRequest(json: JSONObject): PrepareRequest {
+        return PrepareRequest(
+            allowDownload = json.optBooleanOrNull("allowDownload"),
+            locale = json.optStringOrNull("locale"),
+            localeMatch = json.optStringOrNull("localeMatch")?.let(::parseLocaleMatch),
+            privacy = json.optStringOrNull("privacy")?.let(::parsePrivacy),
+            requestId = json.optStringOrNull("requestId"),
+            tasks = json.optJSONArray("tasks")?.toStringList(),
+            voice = json.optJSONObject("voice")?.let(::parsePrepareVoice)
+        )
+    }
+
+    /** Like `run(request)`, the request arrives at the options root. */
+    fun parseArtifactReadRequest(json: JSONObject): ArtifactReadRequest {
+        return ArtifactReadRequest(
+            artifactId = json.getString("artifactId"),
+            maxBytes = json.optLongOrNull("maxBytes"),
+            offset = json.optLongOrNull("offset")
+        )
+    }
+
+    fun parseMediaArtifact(json: JSONObject): MediaArtifact {
+        return MediaArtifact(
+            byteLength = json.optLongOrNull("byteLength"),
+            destinationRef = json.optStringOrNull("destinationRef"),
+            durationMs = json.optDoubleOrNull("durationMs"),
+            id = json.getString("id"),
+            lifetime = parseEnum(json.getString("lifetime"), "artifact lifetime", ArtifactLifetime::fromRawValue),
+            mediaType = json.getString("mediaType"),
+            owner = parseEnum(json.getString("owner"), "artifact owner", ArtifactOwner::fromRawValue)
+        )
+    }
+
+    /**
+     * `bytes` crosses as base64: a Capacitor call resolves JSON, which has no byte type, and the
+     * JS side decodes it back. `java.util.Base64` rather than `android.util.Base64`, so the JVM
+     * unit tests run it. Transport only — results still carry artifact handles, never bytes.
+     */
+    fun encodeArtifactChunk(chunk: ArtifactChunk): JSObject {
+        return JSObject().apply {
+            put("artifactId", chunk.artifactId)
+            put("offset", chunk.offset)
+            put("bytes", Base64.getEncoder().encodeToString(chunk.bytes))
+            put("totalBytes", chunk.totalBytes)
+            put("done", chunk.done)
+        }
+    }
+
+    /**
+     * Every branch of `TaskOutput`, each field only when set: a run's text, a managed-playback
+     * completion, a media artifact reference, or a prepare run's items. Shared by results and
+     * terminal stream events, which carry the same output.
+     */
+    fun encodeTaskOutput(output: TaskOutput): JSObject {
+        return JSObject().apply {
+            put("type", output.type.rawValue)
+            output.text?.let { put("text", it) }
+            output.artifact?.let { put("artifact", encodeMediaArtifact(it)) }
+            output.playback?.let { put("playback", encodePlaybackOutput(it)) }
+            output.speech?.let { put("speech", encodeSpeechOutput(it)) }
+            output.preparation?.let { items ->
+                put("preparation", JSArray().apply { items.forEach { put(encodePreparationItem(it)) } })
+            }
+        }
+    }
+
+    private fun encodeMediaArtifact(artifact: MediaArtifact): JSObject {
+        return JSObject().apply {
+            put("id", artifact.id)
+            put("owner", artifact.owner.rawValue)
+            put("lifetime", artifact.lifetime.rawValue)
+            put("mediaType", artifact.mediaType)
+            artifact.byteLength?.let { put("byteLength", it) }
+            artifact.durationMs?.let { put("durationMs", it) }
+            artifact.destinationRef?.let { put("destinationRef", it) }
+        }
+    }
+
+    private fun encodePlaybackOutput(playback: PlaybackOutput): JSObject {
+        return JSObject().apply {
+            playback.timing?.let { timing ->
+                put(
+                    "timing",
+                    JSObject().apply {
+                        timing.durationMs?.let { put("durationMs", it) }
+                        timing.firstAudioMs?.let { put("firstAudioMs", it) }
+                        timing.firstChunkMs?.let { put("firstChunkMs", it) }
+                    }
+                )
+            }
+        }
+    }
+
+    private fun encodeSpeechOutput(speech: SpeechOutput): JSObject {
+        return JSObject().apply {
+            put("locale", speech.locale)
+            speech.voice?.let { voice ->
+                put(
+                    "voice",
+                    JSObject().apply {
+                        voice.gender?.let { put("gender", it.rawValue) }
+                        voice.id?.let { put("id", it) }
+                        voice.name?.let { put("name", it) }
+                    }
+                )
+            }
+        }
+    }
+
+    private fun encodePreparationItem(item: PreparationItem): JSObject {
+        return JSObject().apply {
+            put("providerId", item.providerId)
+            put("task", item.task)
+            put("status", item.status.rawValue)
+            item.voiceId?.let { put("voiceId", it) }
+            item.reason?.let { put("reason", it) }
+        }
+    }
+
     fun encodeTaskResult(result: TaskResult): JSObject {
         return JSObject().apply {
             put("schemaVersion", result.schemaVersion.rawValue)
             put("runId", result.runId)
             put("finishReason", result.finishReason.rawValue)
-            put(
-                "output",
-                JSObject()
-                    .put("type", result.output.type.rawValue)
-                    .put("text", result.output.text)
-            )
+            put("output", encodeTaskOutput(result.output))
             put(
                 "telemetry",
                 JSObject()
@@ -391,6 +519,10 @@ object IndeRunSerializer {
         return JSObject().apply {
             payload.text?.let { put("text", it) }
             payload.phase?.let { put("phase", phaseValue(it)) }
+            payload.providerId?.let { put("providerId", it) }
+            payload.task?.let { put("task", it) }
+            payload.fractionCompleted?.let { put("fractionCompleted", it) }
+            payload.output?.let { put("output", encodeTaskOutput(it)) }
             payload.finalText?.let { put("finalText", it) }
             payload.finishReason?.let { put("finishReason", it.rawValue) }
             payload.outcome?.let { put("outcome", outcomeValue(it)) }
@@ -564,6 +696,21 @@ object IndeRunSerializer {
             "text_to_text" -> TaskKind.TEXT_TO_TEXT
             else -> throw IllegalArgumentException("Unsupported task kind '$value'.")
         }
+    }
+
+    private fun parsePrepareVoice(json: JSONObject): PrepareVoice {
+        return PrepareVoice(
+            gender = json.optStringOrNull("gender")?.let { parseEnum(it, "voice gender", VoiceGender::fromRawValue) },
+            id = json.optStringOrNull("id"),
+            providerId = json.optStringOrNull("providerId")
+        )
+    }
+
+    private fun parseLocaleMatch(value: String): LocaleMatch = parseEnum(value, "localeMatch", LocaleMatch::fromRawValue)
+
+    /** Reads a wire string through the generated enum's own `fromRawValue`, never a hand-kept table. */
+    private fun <T> parseEnum(value: String, name: String, fromRawValue: (String) -> T?): T {
+        return fromRawValue(value) ?: throw IllegalArgumentException("Unsupported $name '$value'.")
     }
 
     private fun parseTelemetryLevel(value: String): TelemetryLevel {
