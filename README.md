@@ -238,9 +238,13 @@ accepts the same `privacy`, `cloud` and `timeoutMs` constraints.
 ### Neural voices
 
 A neural voice is a developer-supplied model package. The plugin downloads nothing on its own.
-Your app fetches the files with any downloader (for example `downloadFile` from
-`@capacitor/filesystem`) into the platform's app-managed directory, then passes a `ModelPackage`
-that describes them. List a sha256 per file in `integrity.checksums`; the providers verify each
+Your app fetches the files with any downloader into the platform's app-managed directory, then
+passes a `ModelPackage` that describes them. With `@capacitor/filesystem` (8.1.5), `Directory.Library`
+reaches it on both platforms: on iOS the files go to `Application Support/<ref>/<file>` inside the
+Library directory (the engine's `app_managed` is Application Support), on Android to `<ref>/<file>`
+(`Directory.Library` and `Directory.Data` are both `context.filesDir`, the engine's `app_managed`);
+create the folders with `mkdir({ recursive: true })` first, because the Android download does not.
+The [test app's speech panel](example-app/src/neural-package.ts) is working code for this. List a sha256 per file in `integrity.checksums`; the providers verify each
 file before loading it. `prepare()` then warms the model up ahead of the first sentence.
 
 ```ts

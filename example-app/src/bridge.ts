@@ -16,8 +16,16 @@
 import { Capacitor } from "@capacitor/core";
 import {
   IndeRunCapacitor,
+  type ArtifactChunk,
   type ConfigureOptions,
+  type GeneratedSpeech,
+  type GenerateSpeechOptions,
+  type ListVoicesOptions,
+  type MediaArtifact,
   type ProviderCapabilitySnapshot,
+  type SpeakOptions,
+  type SpeechPlayback,
+  type SpeechVoiceInfo,
   type StreamRun,
   type TaskRequest,
   type TaskResult
@@ -109,6 +117,26 @@ export function buildRequest(choice: RequestChoice): TaskRequest {
   return request;
 }
 
+/**
+ * The speech half of the configuration, shared with the text panels. The plugin holds one engine
+ * per `configure()`, and a new `configure()` replaces it (closing the neural model it loaded), so
+ * the speech panel and the text panels must configure the same thing or each click would reload
+ * the model. Null until the speech panel is first used, which leaves the text panels' own
+ * configuration exactly as it was.
+ */
+export type SpeechConfig = Pick<ConfigureOptions, "systemSpeech" | "neuralSpeech" | "modelProfiles">;
+
+let speechConfig: SpeechConfig | null = null;
+let lastTextOptions: ConfigureOptions = {};
+
+export function setSpeechConfig(config: SpeechConfig | null): void {
+  speechConfig = config;
+}
+
+function withSpeech(options: ConfigureOptions): ConfigureOptions {
+  return speechConfig === null ? options : { ...options, ...speechConfig };
+}
+
 let configuredKey: string | null = null;
 
 async function ensureConfigured(options: ConfigureOptions): Promise<void> {
@@ -123,7 +151,8 @@ async function ensureConfigured(options: ConfigureOptions): Promise<void> {
 export async function capabilities(
   options: ConfigureOptions
 ): Promise<ProviderCapabilitySnapshot[]> {
-  await ensureConfigured(options);
+  lastTextOptions = options;
+  await ensureConfigured(withSpeech(options));
   return IndeRunCapacitor.checkCapabilities();
 }
 
@@ -131,7 +160,8 @@ export async function run(
   options: ConfigureOptions,
   request: TaskRequest
 ): Promise<TaskResult> {
-  await ensureConfigured(options);
+  lastTextOptions = options;
+  await ensureConfigured(withSpeech(options));
   return IndeRunCapacitor.run(request);
 }
 
@@ -139,6 +169,61 @@ export async function stream(
   options: ConfigureOptions,
   request: TaskRequest
 ): Promise<StreamRun> {
-  await ensureConfigured(options);
+  lastTextOptions = options;
+  await ensureConfigured(withSpeech(options));
   return IndeRunCapacitor.stream(request);
+}
+
+// ---------------------------------------------------------------- speech
+
+async function configureForSpeech(): Promise<void> {
+  await ensureConfigured(withSpeech(lastTextOptions));
+}
+
+export async function speechCapabilities(): Promise<ProviderCapabilitySnapshot[]> {
+  await configureForSpeech();
+  return IndeRunCapacitor.checkCapabilities();
+}
+
+export async function listVoices(options?: ListVoicesOptions): Promise<SpeechVoiceInfo[]> {
+  await configureForSpeech();
+  return IndeRunCapacitor.listVoices(options);
+}
+
+export async function speak(options: SpeakOptions): Promise<SpeechPlayback> {
+  await configureForSpeech();
+  return IndeRunCapacitor.speak(options);
+}
+
+export async function generateSpeech(options: GenerateSpeechOptions): Promise<GeneratedSpeech> {
+  await configureForSpeech();
+  return IndeRunCapacitor.generateSpeech(options);
+}
+
+export async function prepare(request: Parameters<typeof IndeRunCapacitor.prepare>[0]): Promise<StreamRun> {
+  await configureForSpeech();
+  return IndeRunCapacitor.prepare(request);
+}
+
+/** Reads every byte of an artifact. Reads are chunked; loop until `done`. */
+export async function readAllBytes(artifact: MediaArtifact): Promise<Uint8Array> {
+  const chunks: ArtifactChunk["bytes"][] = [];
+  let offset = 0;
+  for (;;) {
+    const chunk = await IndeRunCapacitor.readArtifact({ artifactId: artifact.id, offset });
+    chunks.push(chunk.bytes);
+    offset += chunk.bytes.byteLength;
+    if (chunk.done) break;
+  }
+  const bytes = new Uint8Array(offset);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return bytes;
+}
+
+export function disposeArtifact(artifact: MediaArtifact): Promise<void> {
+  return IndeRunCapacitor.disposeArtifact(artifact);
 }

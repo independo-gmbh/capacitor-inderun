@@ -18,6 +18,7 @@ import {
   stream as startStream
 } from "./bridge.js";
 import { DEFAULT_ENDPOINT_URL, DEFAULT_MODEL, ONNX_MODEL_ID } from "./config.js";
+import { startSpeechPanel } from "./speech-panel.js";
 import { applyEvent, createPane, type Privacy, type RunPane } from "./stream-state.js";
 
 const el = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -589,7 +590,7 @@ controls.runButton.addEventListener("click", async () => {
     controls.panes.append(view.root);
     view.update({
       ...createPane("Run (Mode 1)", result.runId, privacy, null),
-      text: result.output.text,
+      text: result.output.text ?? "",
       terminal: {
         outcome: "completed",
         textMatches: true,
@@ -711,4 +712,5 @@ export function start(): void {
   controls.useSystemModelRow.hidden = !isWeb();
   renderCapabilities(null);
   void refreshCapabilities();
+  startSpeechPanel();
 }

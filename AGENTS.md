@@ -33,6 +33,8 @@
   CI because every job is root-scoped. Do **not** add it to `pnpm-workspace.yaml`: that file has no
   `packages:` key, so pnpm treats the root as a single package, and adding it would drag the example
   into `--frozen-lockfile`.
+  `examples/local-first-starter/` is the same kind of isolated app, meant to be copied by app
+  developers; same rules (not in the workspace, not in CI).
 - This repo is deliberately a **thin bridge only**: it delegates routing, provider logic, and error
   normalization to the released IndeRun platform SDKs (`@independo/inderun-web` on npm, the
   `IndeRun` Swift package, `app.independo.inderun:inderun-*` on Maven Central). Native SDK behavior
