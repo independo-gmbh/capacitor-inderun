@@ -89,7 +89,7 @@ On iOS the app owns the audio session. To hear speech with the silent switch on,
 
 ## Where to look
 
-All of the app logic is `src/main.ts`, about 120 lines. The one line that matters:
+All of the app logic is `src/main.ts`. The one line that matters:
 
 ```ts
 const inderun = createIndeRunCapacitor({ systemSpeech: true });

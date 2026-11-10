@@ -47,6 +47,11 @@
 - `pnpm test:android` — runs `android/src/test` via `./gradlew :testDebugUnitTest`.
 - `pnpm test:ios` — runs `swift test` against `ios/Tests`.
 - `pnpm lint` — type-check only (`tsc --noEmit -p tsconfig.json`); there is no separate ESLint step.
+- `pnpm check:snippets` — type-checks `snippets/*.ts` (one file per README example) against `src/index.ts`.
+  `pnpm sync:markers` rewrites the README's `<!-- snippet:NAME -->` / `<!-- version:NAME -->` blocks
+  from `snippets/` and `versions.json` (ADR 024); `pnpm check:markers` fails when they are stale or when
+  `versions.json` disagrees with the pins in `package.json`, `Package.swift` or `android/build.gradle.kts`.
+  Never edit text between marker pairs by hand. A snippet containing `TODO(verify)` is skipped and reported pending.
 - `pnpm verify:web` / `verify:android` / `verify:ios` — platform build verification (`tsc`, Gradle
   `assembleDebug`, `swift build` respectively). Android/iOS verification require the Android
   SDK/NDK and Xcode toolchains locally.
@@ -102,9 +107,10 @@
   rather than `from:` because `from:` on a 0.x means `<1.0.0`, which would let SwiftPM float across a
   minor (where an 0.x SDK's breaking changes live) while the other two stay pinned, and invisibly, as
   `Package.resolved` is gitignored.
-- Bumping is a five-file edit — `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`'s
-  `minimumReleaseAgeExclude`, `Package.swift`, `android/build.gradle.kts` — plus the version table in
-  `README.md`. Miss the workspace allowlist and the install is age-blocked. Note `pnpm install` alone
+- Bumping is a six-file edit — `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`'s
+  `minimumReleaseAgeExclude`, `Package.swift`, `android/build.gradle.kts`, `versions.json` — then
+  `pnpm sync:markers` regenerates the README's version table and install line (`pnpm check:markers`
+  fails when `versions.json` and the pins disagree). Miss the workspace allowlist and the install is age-blocked. Note `pnpm install` alone
   may leave the lockfile's importer entry on the old version while updating its specifier; check it,
   and use `pnpm up <pkg>@<version>` when it does.
 - While the bridge tracks an `inderun` **prerelease**, switch `Package.swift` back to `exact:`.

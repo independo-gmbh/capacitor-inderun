@@ -35,9 +35,11 @@ routing, provider logic, or normalized error handling:
 
 ## Install
 
+<!-- version:install -->
 ```sh
-pnpm add @independo/capacitor-inderun @capacitor/core
+pnpm add @independo/capacitor-inderun @capacitor/core@8
 ```
+<!-- /version -->
 
 Then sync native projects with your normal Capacitor workflow.
 
@@ -67,13 +69,14 @@ corresponding build failure is named so it is searchable:
 | `compileSdkVersion` | `37` | *"requires libraries and applications that depend on it to compile against version 37 or later"* |
 | `minSdkVersion` | `26` | manifest merger conflict |
 | Android Gradle Plugin | `9.1.0`+ (Gradle 9.x) | *"requires Android Gradle plugin 9.1.0 or higher"* |
-| `org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21` on the app's `buildscript` classpath | — | *"Module was compiled with an incompatible version of Kotlin … metadata is 2.4.0, expected version is 2.2.0"* |
+| <!-- version:kotlin-plugin -->`org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21`<!-- /version --> on the app's `buildscript` classpath | — | *"Module was compiled with an incompatible version of Kotlin … metadata is 2.4.0, expected version is 2.2.0"* |
 
 The Kotlin one is the surprising entry: the `inderun-*` artifacts carry Kotlin 2.4.x
 metadata, which the Kotlin plugin AGP brings by default cannot read. The plugin's own build
 hoists a newer KGP for its standalone build, but a consuming app resolves KGP from its own
 buildscript classpath, so the app has to add it too:
 
+<!-- version:kotlin-plugin-gradle -->
 ```groovy
 // android/build.gradle
 buildscript {
@@ -82,6 +85,7 @@ buildscript {
     }
 }
 ```
+<!-- /version -->
 
 AGP 9 also rejects `getDefaultProguardFile('proguard-android.txt')`; switch to
 `proguard-android-optimize.txt`.
@@ -94,13 +98,15 @@ supports 15.0"*.
 
 ## Supported IndeRun Version
 
-This release tracks **IndeRun 0.5.0-rc.20** on all three platforms:
+This release tracks <!-- version:inderun-version -->**IndeRun 0.5.0-rc.20**<!-- /version --> on all three platforms:
 
+<!-- version:supported-table -->
 | Platform | Artifact | Constraint |
 |----------|----------|------------|
 | Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.5.0-rc.20` (exact) |
 | iOS      | `inderun` SwiftPM package | `0.5.0-rc.20` (exact) |
 | Android  | `app.independo.inderun:inderun-*` | `0.5.0-rc.20` (exact) |
+<!-- /version -->
 
 All three pins are exact and bumped together — a partial bump is how the platforms drift apart. The
 SwiftPM pin is exact only while the bridge tracks an `inderun` prerelease, because SwiftPM's range
@@ -117,6 +123,7 @@ Start with no cloud configuration. On iOS and Android the plugin registers the d
 provider (Apple Foundation Models, ML Kit GenAI) from `configure()`, so there is nothing to pass.
 The handle configures itself on the first call.
 
+<!-- snippet:usage -->
 ```ts
 import { createIndeRunCapacitor, type IndeRunError } from "@independo/capacitor-inderun";
 
@@ -147,6 +154,7 @@ try {
   }
 }
 ```
+<!-- /snippet -->
 
 `local_required` is a promise: the request is refused rather than sent to a cloud provider, and
 the check runs at routing and again before each attempt. `provenance.routeRejections` lists every
@@ -162,11 +170,13 @@ with `Unavailable` when it has nothing to register. Pass `systemModel: {}` (Chro
 `onnx` (see [On-device ONNX models](#on-device-onnx-models)), or speech
 (see [Speech](#speech)):
 
+<!-- snippet:web-system-model -->
 ```ts
 import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 
 const inderun = createIndeRunCapacitor({ systemModel: {} });
 ```
+<!-- /snippet -->
 
 `systemModel` is **web-only** and ignored on iOS and Android. It is what makes
 `constraints.privacy = "local_required"` routable in a browser.
@@ -177,6 +187,7 @@ Speech providers register only when asked for, on all three platforms. The route
 registered provider on every request, so an app that does not speak should not pay for a voice
 listing.
 
+<!-- snippet:speak -->
 ```ts
 import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 
@@ -198,10 +209,12 @@ const playback = await inderun.speak({
 const spoken = await playback.result;
 console.log(spoken.outcome, spoken.provenance?.providerId);
 ```
+<!-- /snippet -->
 
 To get the audio instead of playing it, use `generateSpeech()`. It returns an artifact handle,
 never bytes. Read the bytes with `readArtifact()` and release them with `disposeArtifact()`:
 
+<!-- snippet:generate-speech -->
 ```ts
 import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 
@@ -230,6 +243,7 @@ try {
   await inderun.disposeArtifact(speech.artifact);
 }
 ```
+<!-- /snippet -->
 
 `speak()` is a `stream()` underneath, so it is cancelled like one. `generateSpeech()` is a `run()`
 underneath and cannot be cancelled. Both go through the same routing as text, so `execution`
@@ -244,19 +258,31 @@ reaches it on both platforms: on iOS the files go to `Application Support/<ref>/
 Library directory (the engine's `app_managed` is Application Support), on Android to `<ref>/<file>`
 (`Directory.Library` and `Directory.Data` are both `context.filesDir`, the engine's `app_managed`);
 create the folders with `mkdir({ recursive: true })` first, because the Android download does not.
-The [test app's speech panel](example-app/src/neural-package.ts) is working code for this. List a sha256 per file in `integrity.checksums`; the providers verify each
-file before loading it. `prepare()` then warms the model up ahead of the first sentence.
+The [test app's speech panel](example-app/src/neural-package.ts) is working code for this.
 
+List a sha256 per file in `integrity.checksums`; the providers verify each file before loading it.
+`prepare()` then warms the model up ahead of the first sentence.
+
+<!-- snippet:neural-voices -->
 ```ts
 import { createIndeRunCapacitor, type ModelPackage } from "@independo/capacitor-inderun";
 
-// `model-package.json` ships with the package. The source says where the app put the files.
-declare const manifest: ModelPackage;
-
+// What `model-package.json` describes, trimmed to the fields that matter here. The source says
+// where the app put the files, and each file's checksum is verified before it is loaded.
 const modelPackage: ModelPackage = {
-  ...manifest,
+  id: "my-voice",
+  version: "1",
+  format: "onnx",
+  tasks: ["text_to_speech"],
   source: { sourceType: "app_managed", ref: "models/voice" },
-  integrity: { checksums: { "text.onnx": "sha256:<hex digest of the downloaded file>" } }
+  integrity: { checksums: { "text.onnx": "sha256:<hex digest of the downloaded file>" } },
+  speech: {
+    pipeline: "articulino",
+    sampleRate: 24000,
+    channels: 1,
+    graphs: { text: "text.onnx", dit_step: "dit_step.onnx", decoder: "decoder.onnx" },
+    voices: [{ id: "de-at-m-1", name: "Max", locales: ["de-AT"], gender: "male", file: "voices/de-at-m-1.safetensors" }]
+  }
 };
 
 const inderun = createIndeRunCapacitor({
@@ -272,6 +298,7 @@ for await (const event of preparation.events) {
   }
 }
 ```
+<!-- /snippet -->
 
 `neuralSpeech` registers one provider per entry, with id
 `local.onnx.speech.<apple|android|web>:<modelPackage.id>` unless the entry sets `id`. Its `runtime`
@@ -296,6 +323,7 @@ Platform notes for speech:
 `onnx` runs a developer-supplied ONNX text model on every platform. It does not stream: it serves
 `run()` only.
 
+<!-- snippet:onnx -->
 ```ts
 import { createIndeRunCapacitor, type ModelPackage } from "@independo/capacitor-inderun";
 
@@ -315,6 +343,7 @@ const result = await inderun.run({
   constraints: { privacy: "local_required" }
 });
 ```
+<!-- /snippet -->
 
 On iOS and Android it registers ONNX Runtime's provider (id `local.onnx.genai.apple` or
 `local.onnx.genai.android` unless the options set `id`). The model files have to be on the device
@@ -337,6 +366,7 @@ A cloud route is opt-in twice: you register it in `configure()`, and a request h
 Without `openAI` there is no cloud route at all. With one, use `privacy: "local_preferred"` to try
 the device first and go to the cloud only when the device cannot serve the request.
 
+<!-- snippet:cloud-route -->
 ```ts
 import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 
@@ -358,6 +388,7 @@ const result = await inderun.run({
 
 console.log(result.provenance?.locality); // "on_device" or "cloud"
 ```
+<!-- /snippet -->
 
 `openAI.models` registers one OpenAI-compatible target per model, with id `openai:<model>`
 (`openai:gpt-5.2` above) on every platform. That id is the `providerId` results, errors and
@@ -375,6 +406,7 @@ constraints such as `privacy`. Without a `modelProfile` — or with `"auto"`, wh
 redefined — every registered target is eligible; naming a profile that was not configured
 fails the request.
 
+<!-- snippet:model-profiles -->
 ```ts
 import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 
@@ -400,6 +432,7 @@ const result = await inderun.run({
 
 console.log(result.provenance?.providerId); // "openai:gpt-5-mini"
 ```
+<!-- /snippet -->
 
 Profiles list target ids, so an on-device provider can appear in one too; its id differs per
 platform. `checkCapabilities()` lists the ids registered on the current one.
@@ -409,6 +442,7 @@ platform. `checkCapabilities()` lists the ids registered on the current one.
 `stream()` returns the same `StreamRun` shape the platform SDKs return directly: the
 run's handle, its canonical event sequence, and a cancel hook.
 
+<!-- snippet:streaming -->
 ```ts
 import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 
@@ -440,6 +474,7 @@ for await (const event of run.events) {
 
 run.cancel("user navigated away"); // idempotent; a no-op after the terminal
 ```
+<!-- /snippet -->
 
 Event semantics, ordering, the terminal guarantees, cancellation and fallback are the engines'
 contract, identical on every platform, and documented once in
@@ -567,6 +602,7 @@ Errors thrown by `configure()` and `run()` conform to `IndeRunError` from
 taxonomy). The bridge unwraps the native error envelope before re-throwing, so
 callers receive the same `IndeRunError` shape on every platform.
 
+<!-- snippet:error-handling -->
 ```ts
 import { createIndeRunCapacitor, type TaskRequest } from "@independo/capacitor-inderun";
 
@@ -585,6 +621,7 @@ try {
   }
 }
 ```
+<!-- /snippet -->
 
 ## License
 

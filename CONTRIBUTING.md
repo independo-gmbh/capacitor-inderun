@@ -41,6 +41,15 @@ Runs the Swift package tests (`swift test`).
 
 Type-checks the TypeScript sources without emitting output.
 
+#### `pnpm check:snippets` / `pnpm sync:markers` / `pnpm check:markers`
+
+Every TypeScript example in the README lives in `snippets/NAME.ts` and is type-checked against
+`src/index.ts` by `check:snippets`. The README copy sits between `<!-- snippet:NAME -->` markers and
+the version facts between `<!-- version:NAME -->` markers (rendered from `versions.json`); edit the
+snippet or `versions.json`, then run `sync:markers`. `check:markers` fails when the README is stale or
+when `versions.json` disagrees with the pins in `package.json`, `Package.swift` or
+`android/build.gradle.kts`. A snippet marked `TODO(verify)` is skipped and reported as pending.
+
 #### `pnpm verify:web` / `pnpm verify:android` / `pnpm verify:ios`
 
 Platform build verification. `verify:android` and `verify:ios` require a configured Android SDK/NDK
