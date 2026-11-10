@@ -222,22 +222,47 @@ things are specific to reaching them through a bridge:
 - `prepare(request)` — makes registered providers ready ahead of a run, without producing output. Resolves with a `StreamRun` like `stream()`: progress events, then one terminal event whose output lists each item. `prepare({})` covers every provider and task; a platform download starts only where `allowDownload` on the call, or `autoDownload` at provider registration, permits it.
 - `readArtifact({ artifactId, offset?, maxBytes? })` — reads a byte range of a media artifact a run produced. Resolves with an `ArtifactChunk` whose `bytes` is a `Uint8Array`.
 - `disposeArtifact(artifact)` — releases an artifact's bytes. Artifacts outlive the run that produced them, so dispose each one you keep no longer.
-- `close()` — closes the engine: in-flight streams and prepares end in their cancelled terminal, in-flight runs finish, artifacts are released. The handle **stays closed** — later calls fail with `Unavailable` (`details.code: "engine_closed"`) and `checkCapabilities()` reports no providers. Create a new handle to start over. Closing a handle that never configured does nothing.
+- `speak({ text, locale, voice?, ... })` — speaks through the device. Resolves with a `SpeechPlayback` (`runId`, `result`, `cancel()`): `result` settles when playback ends or is stopped, and `cancel()` stops the audio. A `stream()` underneath, so it is cancelled through the same `cancelStream`.
+- `generateSpeech({ text, locale, mediaTypes?, ... })` — synthesizes retrievable audio. Resolves with a `GeneratedSpeech` whose `artifact` is a handle, never bytes: read them with `readArtifact()` and release them with `disposeArtifact()`. A `run()` underneath, so it cannot be cancelled.
+- `listVoices({ locale?, localeMatch? })` — the voices the registered providers offer right now, as `SpeechVoiceInfo[]`. Pass an entry as `voice` to speak with it.
+- `close()` — closes the engine: in-flight streams and prepares end in their cancelled terminal, in-flight runs finish, artifacts are released, and the speech providers and models the plugin loaded for it are released. The handle **stays closed** — later calls fail with `Unavailable` (`details.code: "engine_closed"`) and `checkCapabilities()` reports no providers. Create a new handle to start over. Closing a handle that never configured does nothing.
+- `speak`, `generateSpeech` and `listVoices` are the web SDK's speech facade (`@independo/inderun-web`) applied to the handle, so they behave exactly as on the web SDK; the facade is loaded on the first speech call, which keeps the web engine out of native app bundles. They are on `IndeRunCapacitor` too.
 - The low-level plugin methods `configure(options)`, `startStream(options)`, `startPrepare(options)`, `cancelStream(options)`, `readArtifact(request)`, `disposeArtifact(artifact)` and `close()` are also exported on `IndeRunCapacitor`, along with the listener event names `STREAM_EVENT_NAME` (`"indeRunStreamEvent"`) and `STREAM_ERROR_NAME` (`"indeRunStreamError"`).
 
 Each `configure()` builds **one engine** that every later call uses until the next `configure()`.
 Artifacts belong to that engine, and a provider that loads a model keeps it loaded there, which is
 why it is not rebuilt per call. A new `configure()` replaces the engine and closes the previous one
-(see `close()` above), resolving once that close has finished; a configuration that fails
-validation leaves the previous engine in place. The native plugin holds one engine at a time, so
+(see `close()` above), then releases the speech providers and loaded models the plugin built for it,
+resolving once both have finished; a configuration that fails validation leaves the previous engine
+in place. Plugin teardown does the same without waiting. The native plugin holds one engine at a time, so
 handles that configure differently replace each other's engine.
 
 > The two listener event names are **public contract**. Native emits exactly these, and an
 > app may attach its own listener to them; renaming one is a breaking change.
 
 The `IndeRunCapacitorPlugin` and `ConfigureOptions` contracts — including the `openAI`,
-`systemModel` and `onnx` bootstrap configs, `modelProfiles` and the `allowDirectOpenAIEndpoint` flag — are
-defined and documented in `src/definitions.ts`.
+`systemModel`, `onnx`, `systemSpeech` and `neuralSpeech` bootstrap configs, `modelProfiles` and the
+`allowDirectOpenAIEndpoint` flag — are defined and documented in `src/definitions.ts`.
+
+Speech providers are registered only when asked for, on all three platforms:
+
+```ts
+const inderun = createIndeRunCapacitor({
+  systemSpeech: true, // AVSpeechSynthesizer, Android TextToSpeech, or speechSynthesis
+  neuralSpeech: [{ modelPackage }] // one neural voice model per entry, run by ONNX Runtime
+});
+
+const playback = await inderun.speak({ text: "Der Bus kommt.", locale: "de-AT" });
+await playback.result;
+```
+
+`neuralSpeech` registers one provider per entry, with id
+`local.onnx.speech.<apple|android|web>:<modelPackage.id>` unless the entry sets `id`. Its
+`runtime` defaults to `"onnx"`, the only one this build ships: `"coreai"` is refused by
+`configure()`. `autoDownload` (default off) lets `prepare()` start that provider's download on its
+own. On the web, the package files must be reachable by URL and the app installs the optional
+`onnxruntime-web` peer dependency; see `NeuralSpeechBootstrapOptions`. The browser's system speech
+can only play audio, so `generateSpeech()` is refused there by routing.
 
 `systemModel`, `onnx` and `allowDirectOpenAIEndpoint` are **web-only** and ignored on iOS
 and Android, which register their own on-device provider from `configure()` regardless.
@@ -281,8 +306,8 @@ when the runtime has nothing to add: absence means *inherit the static declarati
   OpenAI-compatible provider, a Web ONNX Runtime provider and a browser system-model provider, but
   only the OpenAI-compatible one declares streaming support — so a `local_required` **stream** in a
   browser is refused at routing time, while a `local_required` **run** can be served on-device.
-- iOS always registers the Apple on-device provider and optionally one OpenAI target per configured model.
-- Android always registers the ML Kit on-device provider and optionally one OpenAI target per configured model.
+- iOS always registers the Apple on-device provider and optionally one OpenAI target per configured model, the system speech provider and the neural speech providers.
+- Android always registers the ML Kit on-device provider and optionally one OpenAI target per configured model, the system speech provider and the neural speech providers. The system speech module declares the `TTS_SERVICE` intent query an app needs to see a TTS engine from API 30; it merges into the app's manifest.
 - Keep credentials behind `authContextRef`. That keeps a secret out of the request payload and out
   of source; it does not make a key safe to ship, since anything an installed app or a browser can
   read, someone with that app or browser can read. For a key you own, put it behind a backend you

@@ -11,8 +11,15 @@
   `IndeRunWeb`, wired to `@independo/inderun-web`).
 - Each platform holds **one engine per `configure()`** and reuses it for every call: artifacts
   are engine-owned, and providers that load a model keep it loaded in that engine. A new
-  `configure()` closes the engine it replaces; plugin teardown closes it too. Do not go back to
-  building an engine per call.
+  `configure()` closes the engine it replaces and then releases the providers and runtimes the
+  bridge built for it (system speech, neural speech runtimes and their loaded models); `close()`
+  and plugin teardown do the same. Upstream's `close()` closes no provider an app constructed, and
+  for these the bridge is the app, so it keeps them next to the engine (`BridgedConfiguration` on
+  both natives) and closes them after it. Do not go back to building an engine per call.
+- `speak`, `generateSpeech` and `listVoices` in `index.ts` are the web SDK's speech facade applied
+  to the bridge, loaded with a dynamic `import()`: `index.ts` is in every native app's bundle, and
+  a static import of `@independo/inderun-web` would pull in the web engine and its WASM loader.
+  Keep runtime imports of that package dynamic (type imports are fine).
 - Native implementations live in `android/` (Gradle module, plugin entry under
   `android/src/main/`, with `IndeRunStreamRegistry.kt` tracking live streaming runs) and
   `ios/Sources/IndeRunCapacitorPlugin/` (`IndeRunCapacitorPlugin.swift` is the Capacitor plugin

@@ -29,9 +29,15 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
     // The web SDK requires at least one provider, not specifically the cloud one. Held
     // here as well as there so the failure is an `Unavailable` contract error rather than
     // a raw SDK throw, which is what the facade's callers expect.
-    if (!options?.openAI && !options?.systemModel && !options?.onnx) {
+    if (
+      !options?.openAI &&
+      !options?.systemModel &&
+      !options?.onnx &&
+      !options?.systemSpeech &&
+      !options?.neuralSpeech?.length
+    ) {
       throw createUnavailable(
-        "Capacitor web execution requires at least one provider registration. Configure with openAI, systemModel and/or onnx bootstrap options before calling run(request)."
+        "Capacitor web execution requires at least one provider registration. Configure with openAI, systemModel, onnx, systemSpeech and/or neuralSpeech bootstrap options before calling run(request)."
       ).toContractError();
     }
 
@@ -51,6 +57,12 @@ export class IndeRunWeb extends WebPlugin implements IndeRunCapacitorPlugin {
       }
       if (options.onnx !== undefined) {
         webOptions.onnx = compactOnnxOptions(options.onnx);
+      }
+      if (options.systemSpeech !== undefined) {
+        webOptions.systemSpeech = compactSystemSpeechOptions(options.systemSpeech);
+      }
+      if (options.neuralSpeech !== undefined) {
+        webOptions.neuralSpeech = options.neuralSpeech.map(compactNeuralSpeechOptions);
       }
       if (options.modelProfiles !== undefined) {
         webOptions.modelProfiles = options.modelProfiles;
@@ -291,6 +303,54 @@ function compactOnnxOptions(onnx: NonNullable<ConfigureOptions["onnx"]>): WebOnn
   }
   if (onnx.timeoutMs !== undefined) {
     result.timeoutMs = onnx.timeoutMs;
+  }
+
+  return result;
+}
+
+type WebSystemSpeechOptions = NonNullable<CreateIndeRunWebOptions["systemSpeech"]>;
+type WebNeuralSpeechOptions = NonNullable<CreateIndeRunWebOptions["neuralSpeech"]>[number];
+
+/** `true` is the defaults, which the web SDK spells `{}`. */
+function compactSystemSpeechOptions(
+  systemSpeech: NonNullable<ConfigureOptions["systemSpeech"]>
+): WebSystemSpeechOptions {
+  const result: WebSystemSpeechOptions = {};
+
+  if (systemSpeech !== true && systemSpeech.id !== undefined) {
+    result.id = systemSpeech.id;
+  }
+
+  return result;
+}
+
+/**
+ * The runtime crosses as a descriptor (`{ kind: "onnx" }`), the web SDK's JSON-serializable
+ * stand-in for a runtime object. A runtime built from a descriptor is the engine's to close, so
+ * closing the engine releases it: the bridge holds nothing of its own here to close.
+ */
+function compactNeuralSpeechOptions(
+  neuralSpeech: NonNullable<ConfigureOptions["neuralSpeech"]>[number]
+): WebNeuralSpeechOptions {
+  if (neuralSpeech.runtime !== undefined && neuralSpeech.runtime !== "onnx") {
+    throw new Error(
+      `The "${neuralSpeech.runtime}" neural speech runtime is not available on the web; use "onnx".`
+    );
+  }
+
+  const result: WebNeuralSpeechOptions = {
+    modelPackage: neuralSpeech.modelPackage,
+    runtime: { kind: "onnx" }
+  };
+
+  if (neuralSpeech.id !== undefined) {
+    result.id = neuralSpeech.id;
+  }
+  if (neuralSpeech.timeoutMs !== undefined) {
+    result.timeoutMs = neuralSpeech.timeoutMs;
+  }
+  if (neuralSpeech.autoDownload !== undefined) {
+    result.autoDownload = neuralSpeech.autoDownload;
   }
 
   return result;

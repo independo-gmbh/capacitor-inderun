@@ -130,6 +130,105 @@ describe("IndeRunWeb", () => {
     });
   });
 
+  describe("speech providers", () => {
+    const speechPackage = {
+      id: "articulino",
+      format: "onnx" as const,
+      source: { sourceType: "app_managed" as const, ref: "https://example.test/articulino/" },
+      speech: {
+        pipeline: "articulino",
+        sampleRate: 44_100,
+        graphs: { text: "text.onnx" },
+        voices: [{ id: "lena", name: "Lena", locales: ["de-AT"] }]
+      }
+    };
+
+    it("maps systemSpeech: true to the web SDK's defaults", async () => {
+      createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+      await new IndeRunWeb().configure({ systemSpeech: true });
+
+      expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({ systemSpeech: {} });
+    });
+
+    it("forwards a system speech id", async () => {
+      createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+      await new IndeRunWeb().configure({ systemSpeech: { id: "speech.web" } });
+
+      expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({
+        systemSpeech: { id: "speech.web" }
+      });
+    });
+
+    it("maps each neural speech entry onto the ONNX runtime descriptor, omitting unset fields", async () => {
+      createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+      await new IndeRunWeb().configure({
+        neuralSpeech: [
+          { modelPackage: speechPackage },
+          {
+            modelPackage: { ...speechPackage, id: "articulino-int8" },
+            runtime: "onnx",
+            id: "speech.neural",
+            timeoutMs: 8_000,
+            autoDownload: true
+          }
+        ]
+      });
+
+      expect(createIndeRunWebMock.mock.calls[0][0]).toStrictEqual({
+        neuralSpeech: [
+          { modelPackage: speechPackage, runtime: { kind: "onnx" } },
+          {
+            modelPackage: { ...speechPackage, id: "articulino-int8" },
+            runtime: { kind: "onnx" },
+            id: "speech.neural",
+            timeoutMs: 8_000,
+            autoDownload: true
+          }
+        ]
+      });
+    });
+
+    it("rejects the coreai runtime at configure, before building an engine", async () => {
+      const plugin = new IndeRunWeb();
+
+      await expect(
+        plugin.configure({ neuralSpeech: [{ modelPackage: speechPackage, runtime: "coreai" }] })
+      ).rejects.toMatchObject({
+        schemaVersion: "1.0",
+        errorClass: "Internal",
+        message: expect.stringContaining("coreai")
+      });
+      expect(createIndeRunWebMock).not.toHaveBeenCalled();
+    });
+
+    it("counts speech providers as registrations, but not an empty neuralSpeech list", async () => {
+      createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
+
+      await expect(new IndeRunWeb().configure({ neuralSpeech: [] })).rejects.toMatchObject({
+        errorClass: "Unavailable"
+      });
+      await expect(
+        new IndeRunWeb().configure({ neuralSpeech: [{ modelPackage: speechPackage }] })
+      ).resolves.toBeUndefined();
+    });
+
+    it("registers the browser system speech provider through the real factory", async () => {
+      const actual =
+        await vi.importActual<typeof import("@independo/inderun-web")>("@independo/inderun-web");
+      createIndeRunWebMock.mockImplementation(actual.createIndeRunWeb);
+
+      const plugin = new IndeRunWeb();
+      await plugin.configure({ systemSpeech: true });
+      const { providers } = await plugin.checkCapabilities();
+
+      expect(providers.map((snapshot) => snapshot.providerId)).toEqual(["web_system_speech"]);
+      await plugin.close();
+    });
+  });
+
   it("forwards modelProfiles to the web SDK unchanged", async () => {
     createIndeRunWebMock.mockReturnValue({ run: vi.fn() });
 

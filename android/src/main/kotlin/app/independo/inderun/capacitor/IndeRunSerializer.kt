@@ -3,18 +3,28 @@ package app.independo.inderun.capacitor
 import app.independo.inderun.contracts.ArtifactLifetime
 import app.independo.inderun.contracts.ArtifactOwner
 import app.independo.inderun.contracts.ArtifactReadRequest
+import app.independo.inderun.contracts.AssetLicense
 import app.independo.inderun.contracts.Cloud
 import app.independo.inderun.contracts.ExecutionProvenance
+import app.independo.inderun.contracts.Files
 import app.independo.inderun.contracts.FinishReason
+import app.independo.inderun.contracts.Format
+import app.independo.inderun.contracts.FrontendKind
 import app.independo.inderun.contracts.Generation
 import app.independo.inderun.contracts.IndeRunError
 import app.independo.inderun.contracts.IndeRunErrorClass
+import app.independo.inderun.contracts.Integrity
+import app.independo.inderun.contracts.License
+import app.independo.inderun.contracts.Limits
 import app.independo.inderun.contracts.LocaleMatch
 import app.independo.inderun.contracts.MediaArtifact
 import app.independo.inderun.contracts.Message
 import app.independo.inderun.contracts.MessageRole
+import app.independo.inderun.contracts.ModelPackage
 import app.independo.inderun.contracts.OptimizeFor
 import app.independo.inderun.contracts.Outcome
+import app.independo.inderun.contracts.OutputDelivery
+import app.independo.inderun.contracts.OutputDeliveryRequest
 import app.independo.inderun.contracts.Payload
 import app.independo.inderun.contracts.PayloadError
 import app.independo.inderun.contracts.PayloadTelemetry
@@ -32,8 +42,16 @@ import app.independo.inderun.contracts.ProviderPrivacy
 import app.independo.inderun.contracts.ProviderTaskAvailability
 import app.independo.inderun.contracts.ProviderTaskCapability
 import app.independo.inderun.contracts.ProviderVoice
+import app.independo.inderun.contracts.RequirementLevel
 import app.independo.inderun.contracts.SchemaVersion
+import app.independo.inderun.contracts.Source
+import app.independo.inderun.contracts.SourceType
+import app.independo.inderun.contracts.SpeechFrontend
+import app.independo.inderun.contracts.SpeechInput
+import app.independo.inderun.contracts.SpeechModelPackage
+import app.independo.inderun.contracts.SpeechModelVoice
 import app.independo.inderun.contracts.SpeechOutput
+import app.independo.inderun.contracts.SpeechVoice
 import app.independo.inderun.contracts.StreamEvent
 import app.independo.inderun.contracts.StreamRunHandle
 import app.independo.inderun.contracts.TaskKind
@@ -47,7 +65,9 @@ import app.independo.inderun.contracts.TaskResult
 import app.independo.inderun.contracts.TaskResultTelemetry
 import app.independo.inderun.contracts.TelemetryLevel
 import app.independo.inderun.contracts.VoiceGender
+import app.independo.inderun.contracts.Runtime as ModelPackageRuntime
 import app.independo.inderun.core.ArtifactChunk
+import app.independo.inderun.core.createInternal
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import org.json.JSONArray
@@ -67,24 +87,151 @@ data class OpenAIProviderBootstrapOptions(
     val timeoutMs: Long? = null
 )
 
+/** `systemSpeech` arrives as `true` or as an options object; see `SystemSpeechBootstrapOptions` in src/definitions.ts. */
+data class SystemSpeechBootstrapOptions(
+    val id: String? = null
+)
+
+/**
+ * One neural speech provider; see `NeuralSpeechBootstrapOptions` in src/definitions.ts. There is
+ * no `runtime` here: ONNX is the only one Android has, and parsing refuses any other.
+ */
+data class NeuralSpeechBootstrapOptions(
+    val modelPackage: ModelPackage,
+    val id: String? = null,
+    val timeoutMs: Long? = null,
+    val autoDownload: Boolean? = null
+)
+
 data class RunOptions(
     val openAI: OpenAIProviderBootstrapOptions? = null,
     /** Profile name to ordered target ids, as `ModelProfiles` takes it. */
-    val modelProfiles: Map<String, List<String>>? = null
+    val modelProfiles: Map<String, List<String>>? = null,
+    /** Null when not asked for: system speech is opt-in (ADR 018). */
+    val systemSpeech: SystemSpeechBootstrapOptions? = null,
+    val neuralSpeech: List<NeuralSpeechBootstrapOptions>? = null
 )
 
 object IndeRunSerializer {
     fun parseConfigureOptions(json: JSONObject): RunOptions {
         return RunOptions(
             openAI = json.optJSONObject("openAI")?.let(::parseOpenAIOptions),
-            modelProfiles = json.optJSONObject("modelProfiles")?.let(::parseModelProfiles)
+            modelProfiles = json.optJSONObject("modelProfiles")?.let(::parseModelProfiles),
+            systemSpeech = parseSystemSpeechOptions(json),
+            neuralSpeech = json.optJSONArray("neuralSpeech")?.let { entries ->
+                List(entries.length()) { index -> parseNeuralSpeechOptions(entries.getJSONObject(index)) }
+            }
         )
+    }
+
+    /** `true` or `{ id? }`; `false` reads as not asking for it, like leaving it out. */
+    private fun parseSystemSpeechOptions(json: JSONObject): SystemSpeechBootstrapOptions? {
+        if (!json.has("systemSpeech") || json.isNull("systemSpeech")) return null
+        return when (val value = json.get("systemSpeech")) {
+            true -> SystemSpeechBootstrapOptions()
+            false -> null
+            is JSONObject -> SystemSpeechBootstrapOptions(id = value.optStringOrNull("id"))
+            else -> throw IllegalArgumentException("systemSpeech must be true or an options object.")
+        }
+    }
+
+    private fun parseNeuralSpeechOptions(json: JSONObject): NeuralSpeechBootstrapOptions {
+        val runtime = json.optStringOrNull("runtime")
+        if (runtime != null && runtime != "onnx") {
+            throw createInternal("$runtime runtime is not available on Android")
+        }
+        return NeuralSpeechBootstrapOptions(
+            modelPackage = parseModelPackage(json.getJSONObject("modelPackage")),
+            id = json.optStringOrNull("id"),
+            timeoutMs = json.optLongOrNull("timeoutMs"),
+            autoDownload = json.optBooleanOrNull("autoDownload")
+        )
+    }
+
+    /**
+     * Every field of the `ModelPackage` contract, each only when set, so a package reaches the
+     * provider exactly as the app declared it: the provider and its runtime, not the bridge,
+     * decide what a package needs.
+     */
+    fun parseModelPackage(json: JSONObject): ModelPackage {
+        return ModelPackage(
+            files = json.optJSONObject("files")?.let { files ->
+                Files(
+                    config = files.optStringOrNull("config"),
+                    external = files.optJSONArray("external")?.toStringList(),
+                    required = files.optJSONArray("required")?.toStringList(),
+                    tokenizer = files.optStringOrNull("tokenizer")
+                )
+            },
+            format = parseEnum(json.getString("format"), "model package format", Format::fromRawValue),
+            id = json.getString("id"),
+            integrity = json.optJSONObject("integrity")?.let { integrity ->
+                Integrity(checksums = integrity.optJSONObject("checksums")?.toStringMap())
+            },
+            license = json.optJSONObject("license")?.let { license ->
+                License(spdx = license.optStringOrNull("spdx"), url = license.optStringOrNull("url"))
+            },
+            limits = json.optJSONObject("limits")?.let { limits ->
+                Limits(diskBytes = limits.optLongOrNull("diskBytes"), memBytes = limits.optLongOrNull("memBytes"))
+            },
+            runtime = json.optJSONObject("runtime")?.let { runtime ->
+                ModelPackageRuntime(
+                    minOpset = runtime.optLongOrNull("minOpset"),
+                    minOsVersion = runtime.optStringOrNull("minOsVersion"),
+                    minRuntimeVersion = runtime.optStringOrNull("minRuntimeVersion"),
+                    platforms = runtime.optJSONArray("platforms")?.toStringList()
+                )
+            },
+            source = json.optJSONObject("source")?.let { source ->
+                Source(
+                    ref = source.optStringOrNull("ref"),
+                    sourceType = parseEnum(source.getString("sourceType"), "model source type", SourceType::fromRawValue)
+                )
+            },
+            speech = json.optJSONObject("speech")?.let(::parseSpeechModelPackage),
+            tasks = json.optJSONArray("tasks")?.toStringList(),
+            variant = json.optStringOrNull("variant"),
+            version = json.optStringOrNull("version")
+        )
+    }
+
+    private fun parseSpeechModelPackage(json: JSONObject): SpeechModelPackage {
+        val voices = json.getJSONArray("voices")
+        return SpeechModelPackage(
+            channels = json.optLongOrNull("channels"),
+            frontend = json.optJSONObject("frontend")?.let { frontend ->
+                SpeechFrontend(
+                    assets = frontend.optJSONObject("assets")?.toStringMap(),
+                    kind = parseEnum(frontend.getString("kind"), "speech frontend kind", FrontendKind::fromRawValue),
+                    license = frontend.optJSONObject("license")?.let(::parseAssetLicense)
+                )
+            },
+            graphs = json.getJSONObject("graphs").toStringMap(),
+            pipeline = json.getString("pipeline"),
+            sampleRate = json.getLong("sampleRate"),
+            voices = List(voices.length()) { index ->
+                val voice = voices.getJSONObject(index)
+                SpeechModelVoice(
+                    file = voice.optStringOrNull("file"),
+                    gender = voice.optStringOrNull("gender")?.let { parseEnum(it, "voice gender", VoiceGender::fromRawValue) },
+                    id = voice.getString("id"),
+                    license = voice.optJSONObject("license")?.let(::parseAssetLicense),
+                    locales = voice.getJSONArray("locales").toStringList(),
+                    name = voice.getString("name")
+                )
+            }
+        )
+    }
+
+    private fun parseAssetLicense(json: JSONObject): AssetLicense {
+        return AssetLicense(spdx = json.optStringOrNull("spdx"), url = json.optStringOrNull("url"))
     }
 
     fun parseTaskRequest(json: JSONObject): TaskRequest {
         return TaskRequest(
             authContextRef = json.optStringOrNull("authContextRef"),
             constraints = json.optJSONObject("constraints")?.let(::parseConstraints),
+            delivery = json.optJSONObject("delivery")?.let(::parseDelivery),
             generation = json.optJSONObject("generation")?.let(::parseGeneration),
             messages = json.optJSONArray("messages")?.let(::parseMessages),
             modelProfile = json.optStringOrNull("modelProfile"),
@@ -92,8 +239,35 @@ object IndeRunSerializer {
             prompt = json.optStringOrNull("prompt"),
             requestId = json.optStringOrNull("requestId"),
             schemaVersion = parseSchemaVersion(json.getString("schemaVersion")),
+            speech = json.optJSONObject("speech")?.let(::parseSpeechInput),
             task = parseTask(json.getJSONObject("task")),
             telemetry = json.optJSONObject("telemetry")?.let(::parseTelemetry)
+        )
+    }
+
+    private fun parseSpeechInput(json: JSONObject): SpeechInput {
+        return SpeechInput(
+            locale = json.getString("locale"),
+            localeMatch = json.optStringOrNull("localeMatch")?.let(::parseLocaleMatch),
+            text = json.getString("text"),
+            voice = json.optJSONObject("voice")?.let { voice ->
+                SpeechVoice(
+                    gender = voice.optStringOrNull("gender")?.let { parseEnum(it, "voice gender", VoiceGender::fromRawValue) },
+                    id = voice.optStringOrNull("id"),
+                    providerId = voice.optStringOrNull("providerId"),
+                    requirement = voice.optStringOrNull("requirement")?.let {
+                        parseEnum(it, "voice requirement", RequirementLevel::fromRawValue)
+                    }
+                )
+            }
+        )
+    }
+
+    private fun parseDelivery(json: JSONObject): OutputDeliveryRequest {
+        return OutputDeliveryRequest(
+            destinationRef = json.optStringOrNull("destinationRef"),
+            mediaTypes = json.optJSONArray("mediaTypes")?.toStringList(),
+            mode = parseEnum(json.getString("mode"), "delivery mode", OutputDelivery::fromRawValue)
         )
     }
 
@@ -691,12 +865,7 @@ object IndeRunSerializer {
         }
     }
 
-    private fun parseTaskKind(value: String): TaskKind {
-        return when (value) {
-            "text_to_text" -> TaskKind.TEXT_TO_TEXT
-            else -> throw IllegalArgumentException("Unsupported task kind '$value'.")
-        }
-    }
+    private fun parseTaskKind(value: String): TaskKind = parseEnum(value, "task kind", TaskKind::fromRawValue)
 
     private fun parsePrepareVoice(json: JSONObject): PrepareVoice {
         return PrepareVoice(

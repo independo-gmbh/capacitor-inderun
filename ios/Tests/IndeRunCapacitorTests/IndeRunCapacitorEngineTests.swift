@@ -149,6 +149,22 @@ final class IndeRunCapacitorEngineTests: XCTestCase {
         XCTAssertEqual(chunk["bytes"] as? String, "AAEC/w==")
     }
 
+    func testAWavArtifactResultEncodesItsHandleAndNoBytes() async throws {
+        let bridge = try await configuredBridge()
+
+        let result = try await bridge.run(requestObject: speechRequest)
+
+        let output = try XCTUnwrap(result["output"] as? [String: Any])
+        XCTAssertEqual(output["type"] as? String, "artifact")
+        XCTAssertEqual(Set(output.keys), ["type", "artifact"])
+        let artifact = try XCTUnwrap(output["artifact"] as? [String: Any])
+        XCTAssertEqual(artifact["mediaType"] as? String, "audio/wav")
+        XCTAssertEqual(artifact["owner"] as? String, "engine")
+        XCTAssertEqual(artifact["lifetime"] as? String, "until_disposed")
+        XCTAssertEqual(artifact["byteLength"] as? Int, ArtifactFixtureProvider.bytes.count)
+        XCTAssertEqual(result["finishReason"] as? String, "stop")
+    }
+
     func testReadsARangeOfAnArtifact() async throws {
         let bridge = try await configuredBridge()
         let id = try artifactId(of: try await bridge.run(requestObject: speechRequest))
@@ -238,7 +254,7 @@ final class IndeRunCapacitorEngineTests: XCTestCase {
 
         let replaced = try bridge.configure(options: openAIOptions("gpt-5.2"))
 
-        XCTAssertTrue(replaced === first)
+        XCTAssertTrue(replaced?.engine === first)
         let stillOpen = await first.checkCapabilities()
         XCTAssertFalse(stillOpen.isEmpty)
         await replaced?.close()

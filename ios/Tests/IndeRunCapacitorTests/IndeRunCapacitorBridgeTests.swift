@@ -110,7 +110,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         let data = try JSONSerialization.data(withJSONObject: json)
         let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
 
-        let registry = try IndeRunCapacitorBridge().makeRegistry(openAI: options.openAI)
+        let registry = try IndeRunCapacitorBridge().makeRegistry(openAI: options.openAI).registry
         let ids = Set(registry.list().map { $0.describe().id })
 
         XCTAssertTrue(ids.contains("openai:gpt-5.2"))

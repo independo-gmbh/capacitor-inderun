@@ -7,6 +7,8 @@ import Foundation
 import IndeRunAppleProviders
 import IndeRunCore
 import IndeRunContracts
+import IndeRunNeuralSpeech
+import IndeRunOnnxProviders
 import IndeRunOpenAIProviders
 import IndeRunSwift
 
@@ -34,11 +36,83 @@ struct OpenAIProviderBootstrapOptions: Codable {
     }
 }
 
-struct CapacitorRunOptions: Codable {
+/// `systemSpeech` arrives as `true` or as an options object; see `SystemSpeechBootstrapOptions`
+/// in src/definitions.ts. `false` is read as not asking for it, the same as leaving it out.
+struct SystemSpeechBootstrapOptions: Decodable {
+    let enabled: Bool
+    let id: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+    }
+
+    init(from decoder: Decoder) throws {
+        if let flag = try? decoder.singleValueContainer().decode(Bool.self) {
+            enabled = flag
+            id = nil
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = true
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+    }
+}
+
+/// One neural speech provider; see `NeuralSpeechBootstrapOptions` in src/definitions.ts.
+struct NeuralSpeechBootstrapOptions: Decodable {
+    let modelPackage: ModelPackage
+    /// `onnx` when absent, the only runtime this build links.
+    let runtime: String?
+    let id: String?
+    let timeoutMs: Int?
+    let autoDownload: Bool?
+}
+
+struct CapacitorRunOptions: Decodable {
     let openAI: OpenAIProviderBootstrapOptions?
     /// Profile name to ordered target ids, as `IndeRun(modelProfiles:)` takes it.
     let modelProfiles: [String: [String]]?
+    let systemSpeech: SystemSpeechBootstrapOptions?
+    let neuralSpeech: [NeuralSpeechBootstrapOptions]?
     let allowDirectOpenAIEndpoint: Bool? // web-only, no-op on native
+}
+
+/// A registry and what the bridge constructed for it that holds something to release.
+struct BridgedRegistry {
+    let registry: ProviderRegistry
+    /// One closer per runtime the bridge built, in registration order.
+    let owned: [@Sendable () async -> Void]
+}
+
+/// What one `configure` built: the engine every call uses, and the providers' runtimes the bridge
+/// constructed for its registry.
+///
+/// Upstream's `close()` closes no provider and no runtime: the registry is the application's,
+/// and whoever creates a thing closes it. Here the bridge is that application, so closing a
+/// configuration closes the engine first -- its streams end, its runs finish, its artifacts go --
+/// and then releases the loaded models. The owned resources are released at most once, so a
+/// configuration closed by `close()` and later replaced by `configure` is not released twice.
+final class BridgedConfiguration: @unchecked Sendable {
+    let engine: IndeRun
+    private let lock = NSLock()
+    private var owned: [@Sendable () async -> Void]
+
+    init(engine: IndeRun, owned: [@Sendable () async -> Void] = []) {
+        self.engine = engine
+        self.owned = owned
+    }
+
+    func close() async {
+        await engine.close()
+        let release = lock.withLock {
+            let pending = owned
+            owned = []
+            return pending
+        }
+        for close in release {
+            await close()
+        }
+    }
 }
 
 /// Unlike `run(request)`, which takes the request at the options root, `startStream`
@@ -89,56 +163,65 @@ final class IndeRunCapacitorBridge {
     /// Long-lived on purpose: artifacts are engine-owned and die with the engine, and a
     /// provider that loads a model keeps it loaded only as long as its engine is in use.
     /// Locked, because the plugin calls in from tasks of its own.
+    ///
+    /// Held with the runtimes the bridge built for its registry, which close after it.
     private let engineLock = NSLock()
-    private var engine: IndeRun?
+    private var configuration: BridgedConfiguration?
     let streams = StreamRegistry()
 
     deinit {
         streams.cancelAll(reason: "Capacitor bridge deallocated.")
-        if let engine {
-            Task { await engine.close() }
+        if let configuration {
+            Task { await configuration.close() }
         }
     }
 
     /// Synchronous on purpose: decoding, validation and the engine swap all happen on the
     /// plugin call, so configurations take effect in the order Capacitor delivered them and a
     /// call issued right after `configure` already reaches the new engine. Only closing the
-    /// replaced engine is asynchronous; the caller awaits the returned engine's `close()` before
-    /// resolving.
+    /// replaced engine is asynchronous; the caller awaits the returned configuration's `close()`
+    /// before resolving.
     ///
-    /// - Returns: The engine this configuration replaced, still to be closed.
-    func configure(options: JSObject) throws -> IndeRun? {
+    /// - Returns: The configuration this one replaced, still to be closed.
+    func configure(options: JSObject) throws -> BridgedConfiguration? {
         let runOptions = try decodeConfigureOptions(from: options)
         // Validated and built before anything is replaced, so a refused configuration
         // leaves the previous engine in place rather than half of each.
         let modelProfiles = try makeModelProfiles(runOptions.modelProfiles)
-        let registry = try makeRegistry(openAI: runOptions.openAI)
+        let built = try makeRegistry(
+            openAI: runOptions.openAI,
+            systemSpeech: runOptions.systemSpeech,
+            neuralSpeech: runOptions.neuralSpeech
+        )
         return swap(
-            engine: IndeRun(registry: registry, hostServices: DefaultHostServices.make(), modelProfiles: modelProfiles)
+            BridgedConfiguration(
+                engine: IndeRun(registry: built.registry, hostServices: DefaultHostServices.make(), modelProfiles: modelProfiles),
+                owned: built.owned
+            )
         )
     }
 
-    /// Makes `engine` the one every later call uses, at once, and hands back the one it
+    /// Makes `configuration` the one every later call uses, at once, and hands back the one it
     /// replaced for the caller to close.
-    func swap(engine newEngine: IndeRun) -> IndeRun? {
+    func swap(_ newConfiguration: BridgedConfiguration) -> BridgedConfiguration? {
         engineLock.withLock {
-            let previous = engine
-            engine = newEngine
+            let previous = configuration
+            configuration = newConfiguration
             return previous
         }
     }
 
-    /// `swap` followed by closing the replaced engine: returns when the old one has closed,
-    /// which upstream defines as its streams and prepares ending in their cancelled terminal
-    /// and its in-flight runs finishing -- no longer.
-    func install(engine newEngine: IndeRun) async {
-        await swap(engine: newEngine)?.close()
+    /// `swap` followed by closing the replaced configuration: returns when the old engine has
+    /// closed, which upstream defines as its streams and prepares ending in their cancelled
+    /// terminal and its in-flight runs finishing, and its owned runtimes have been released.
+    func install(engine newEngine: IndeRun, owned: [@Sendable () async -> Void] = []) async {
+        await swap(BridgedConfiguration(engine: newEngine, owned: owned))?.close()
     }
 
     /// The configured engine, closed or not: a closed one answers every call the way
     /// upstream defines (`engine_closed`), which is what the bridge reports.
     private func requireEngine(before call: String) throws -> IndeRun {
-        guard let engine = engineLock.withLock({ engine }) else {
+        guard let engine = engineLock.withLock({ configuration?.engine }) else {
             throw createUnavailable(message: "Capacitor IndeRun has not been configured. Configure providers before calling \(call).")
         }
         return engine
@@ -233,19 +316,19 @@ final class IndeRunCapacitorBridge {
         await engine.disposeArtifact(artifact: artifact)
     }
 
-    /// Closes the configured engine and keeps it, so every later call fails the way the
-    /// closed engine fails it until `configure` installs a new one. Nothing configured is
-    /// nothing to close.
+    /// Closes the configured engine, then the runtimes the bridge built for it, and keeps the
+    /// engine, so every later call fails the way the closed engine fails it until `configure`
+    /// installs a new one. Nothing configured is nothing to close.
     func close() async {
-        await engineLock.withLock({ engine })?.close()
+        await engineLock.withLock({ configuration })?.close()
     }
 
     /// Plugin teardown: stops the runs the webview can no longer receive, then closes the
-    /// engine without waiting for it -- nobody is left to wait.
+    /// engine and its runtimes without waiting -- nobody is left to wait.
     func teardown() {
         streams.cancelAll(reason: "Capacitor plugin torn down.")
-        if let engine = engineLock.withLock({ engine }) {
-            Task { await engine.close() }
+        if let configuration = engineLock.withLock({ configuration }) {
+            Task { await configuration.close() }
         }
     }
 
@@ -322,8 +405,13 @@ final class IndeRunCapacitorBridge {
         }
     }
 
-    func makeRegistry(openAI: OpenAIProviderBootstrapOptions?) throws -> ProviderRegistry {
+    func makeRegistry(
+        openAI: OpenAIProviderBootstrapOptions?,
+        systemSpeech: SystemSpeechBootstrapOptions? = nil,
+        neuralSpeech: [NeuralSpeechBootstrapOptions]? = nil
+    ) throws -> BridgedRegistry {
         let registry = ProviderRegistry()
+        var owned: [@Sendable () async -> Void] = []
         try registry.register(AppleFoundationModelsProvider())
 
         if let openAI {
@@ -345,7 +433,35 @@ final class IndeRunCapacitorBridge {
             }
         }
 
-        return registry
+        // Opt-in (ADR 018): the router probes every registered provider on every request, so
+        // an app that does not speak should not pay for a voice listing.
+        if let systemSpeech, systemSpeech.enabled {
+            try registry.register(AppleSystemSpeechProvider(id: systemSpeech.id ?? AppleSystemSpeechProvider.defaultId))
+        }
+
+        for entry in neuralSpeech ?? [] {
+            // Refused rather than linked: the Core AI module (`IndeRunCoreAIProviders`) has not
+            // been shown to build with the Xcode this plugin's CI uses, and the plugin does not
+            // ship a module it cannot build there.
+            if let runtime = entry.runtime, runtime != "onnx" {
+                throw createInternal(message: "\(runtime) runtime is not available in this plugin build")
+            }
+            // One runtime per entry, closed with the configuration: the provider has no close of
+            // its own, and the runtime is what holds the loaded model.
+            let runtime = OnnxNeuralSpeechRuntime()
+            let provider = NeuralSpeechProvider(
+                options: NeuralSpeechProviderOptions(
+                    id: entry.id,
+                    modelPackage: entry.modelPackage,
+                    runtime: runtime,
+                    timeout: entry.timeoutMs.map { .milliseconds($0) }
+                )
+            )
+            try registry.register(provider, options: ProviderRegistrationOptions(autoDownload: entry.autoDownload ?? false))
+            owned.append { await runtime.close() }
+        }
+
+        return BridgedRegistry(registry: registry, owned: owned)
     }
 
     private func decodeConfigureOptions(from object: JSObject) throws -> CapacitorRunOptions {

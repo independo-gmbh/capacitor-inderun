@@ -45,7 +45,9 @@ let package = Package(
                 .product(name: "IndeRun", package: "IndeRun"),
                 .product(name: "IndeRunCore", package: "IndeRun"),
                 .product(name: "IndeRunAppleProviders", package: "IndeRun"),
-                .product(name: "IndeRunOpenAIProviders", package: "IndeRun")
+                .product(name: "IndeRunOpenAIProviders", package: "IndeRun"),
+                .product(name: "IndeRunNeuralSpeech", package: "IndeRun"),
+                .product(name: "IndeRunOnnxProviders", package: "IndeRun")
             ],
             path: "ios/Sources/IndeRunCapacitorPlugin"
         ),
@@ -55,7 +57,8 @@ let package = Package(
                 .target(name: "IndeRunCapacitorPlugin"),
                 .product(name: "IndeRun", package: "IndeRun"),
                 .product(name: "IndeRunCore", package: "IndeRun"),
-                .product(name: "IndeRunContracts", package: "IndeRun")
+                .product(name: "IndeRunContracts", package: "IndeRun"),
+                .product(name: "IndeRunNeuralSpeech", package: "IndeRun")
             ],
             path: "ios/Tests/IndeRunCapacitorTests"
         )

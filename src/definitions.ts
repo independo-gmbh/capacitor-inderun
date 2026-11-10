@@ -69,6 +69,52 @@ export interface OnnxProviderBootstrapOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Bootstrap options for the platform's system speech provider: `AVSpeechSynthesizer` on iOS,
+ * `android.speech.tts.TextToSpeech` on Android, `speechSynthesis` on the web. Pass `true` for
+ * the defaults.
+ *
+ * Opt-in on every platform (ADR 018): the router probes every registered provider on every
+ * request, so an app that does not speak should not pay for a voice listing. The provider id
+ * defaults to `apple_system_speech`, `android_system_speech` or `web_system_speech`. The
+ * browser provider only plays audio: it cannot write an artifact, so routing refuses
+ * `generateSpeech()` there.
+ */
+export interface SystemSpeechBootstrapOptions {
+  id?: string;
+}
+
+/**
+ * Bootstrap options for one neural speech provider: a developer-supplied speech model package
+ * (its `speech` block names the pipeline, graphs and voices) and the runtime that executes it.
+ *
+ * Each entry registers one provider, with id `local.onnx.speech.<platform>:<modelPackage.id>`
+ * (`apple`, `android` or `web`) unless `id` is set, so one app can register several models side
+ * by side. It plays through the platform's audio output and writes `audio/wav` artifacts.
+ *
+ * - `runtime` defaults to `"onnx"`, the only runtime this plugin build ships: `configure()`
+ *   rejects `"coreai"` (Apple Core AI) on every platform.
+ * - `autoDownload` lets `prepare()`, explicit or on the first run, start this provider's
+ *   download on its own. Off by default, because a download can use mobile data; a single call
+ *   can still allow one with `prepare({ allowDownload: true })`.
+ * - `timeoutMs` bounds the synthesis until the run commits; a request's `constraints.timeoutMs`
+ *   wins.
+ *
+ * On iOS and Android the package's source names files on the device (`filesystem`, `bundled`,
+ * `app_managed`). **On the web** the package files must be reachable by URL (`bundled` or
+ * `app_managed`): `configure()` has to stay JSON, so the runtime is chosen by name, and a
+ * runtime that reads a package the app installed into OPFS cannot be passed across. The web
+ * runtime also needs the optional `onnxruntime-web` peer dependency, which this plugin does not
+ * declare: the app installs it.
+ */
+export interface NeuralSpeechBootstrapOptions {
+  modelPackage: ModelPackage;
+  runtime?: "onnx" | "coreai";
+  id?: string;
+  timeoutMs?: number;
+  autoDownload?: boolean;
+}
+
 export interface ConfigureOptions {
   openAI?: OpenAIProviderBootstrapOptions;
   /**
@@ -86,6 +132,10 @@ export interface ConfigureOptions {
   systemModel?: SystemModelProviderBootstrapOptions;
   /** Web only; native registers its own on-device provider. */
   onnx?: OnnxProviderBootstrapOptions;
+  /** All platforms, and never registered unless asked for. See `SystemSpeechBootstrapOptions`. */
+  systemSpeech?: true | SystemSpeechBootstrapOptions;
+  /** All platforms; one provider per entry. See `NeuralSpeechBootstrapOptions`. */
+  neuralSpeech?: NeuralSpeechBootstrapOptions[];
   allowDirectOpenAIEndpoint?: boolean;
 }
 
@@ -259,10 +309,12 @@ export interface IndeRunCapacitorPlugin {
   disposeArtifact(artifact: MediaArtifact): Promise<void>;
   /**
    * Closes the engine the last `configure()` built: in-flight streams and prepares end in their
-   * cancelled terminal, in-flight runs finish, engine-owned artifacts are disposed. Every later
-   * call fails the way the closed engine fails it (`Unavailable`, `details.code:
-   * "engine_closed"`; `checkCapabilities()` reports no providers) until `configure()` builds a
-   * new one. Closing an unconfigured or already closed plugin does nothing.
+   * cancelled terminal, in-flight runs finish, engine-owned artifacts are disposed. Then the
+   * speech providers and neural runtimes built from `configure()`'s options are released, with
+   * the models they loaded. Every later call fails the way the closed engine fails it
+   * (`Unavailable`, `details.code: "engine_closed"`; `checkCapabilities()` reports no
+   * providers) until `configure()` builds a new one. Closing an unconfigured or already closed
+   * plugin does nothing.
    */
   close(): Promise<void>;
   addListener(

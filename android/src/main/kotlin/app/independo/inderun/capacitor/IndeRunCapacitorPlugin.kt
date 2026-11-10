@@ -3,15 +3,20 @@ package app.independo.inderun.capacitor
 import app.independo.inderun.contracts.IndeRunError
 import app.independo.inderun.core.IndeRunException
 import app.independo.inderun.core.ModelProfiles
+import app.independo.inderun.core.ProviderRegistrationOptions
 import app.independo.inderun.core.ProviderRegistry
 import app.independo.inderun.core.StreamRun
 import app.independo.inderun.core.toIndeRunException
 import app.independo.inderun.providers.mlkit.AndroidProviderRegistryFactory
+import app.independo.inderun.providers.neuralspeech.NeuralSpeechProvider
+import app.independo.inderun.providers.onnx.OnnxNeuralSpeechRuntime
 import app.independo.inderun.providers.openai.DEFAULT_OPENAI_RESPONSES_ENDPOINT
 import app.independo.inderun.providers.openai.OpenAIAuthMode
 import app.independo.inderun.providers.openai.OpenAIFactoryOptions
 import app.independo.inderun.providers.openai.OpenAIProvider
+import app.independo.inderun.providers.systemspeech.AndroidSystemSpeechProvider
 import app.independo.inderun.sdk.IndeRun
+import android.content.Context
 import android.util.Log
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
@@ -32,18 +37,19 @@ class IndeRunCapacitorPlugin : Plugin() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     /**
-     * The one engine every call uses, built by [configure] and kept until the next one.
+     * The one engine every call uses, built by [configure] and kept until the next one, with the
+     * providers and runtimes the bridge built for it, which close after it.
      * Long-lived on purpose: artifacts are engine-owned and die with the engine, and a provider
      * that loads a model keeps it loaded only as long as its engine is in use. Atomic, because
      * Capacitor calls plugin methods on its own thread while the calls run on [scope].
      */
-    private val engine = AtomicReference<IndeRun?>(null)
+    private val configuration = AtomicReference<BridgedConfiguration<IndeRun>?>(null)
     private val streams = IndeRunStreamRegistry()
 
     /**
-     * Resolves once the engine this configuration replaces has closed: its streams and prepares
-     * have reached their cancelled terminal and its in-flight runs have finished. New calls reach
-     * the new engine at once.
+     * Resolves once the engine this configuration replaces has closed — its streams and prepares
+     * have reached their cancelled terminal and its in-flight runs have finished — and the
+     * providers the bridge built for it are released. New calls reach the new engine at once.
      */
     @PluginMethod
     fun configure(call: PluginCall) {
@@ -52,8 +58,17 @@ class IndeRunCapacitorPlugin : Plugin() {
             // Validated and built before anything is replaced, so a refused configuration leaves
             // the previous engine in place rather than half of each.
             val modelProfiles = options.modelProfiles?.let(::ModelProfiles) ?: ModelProfiles()
-            val registry = createRegistry(options.openAI)
-            val previous = engine.getAndSet(IndeRun.initialize(context.applicationContext, registry, modelProfiles))
+            val built = createRegistry(options)
+            val installed = try {
+                BridgedConfiguration(
+                    IndeRun.initialize(context.applicationContext, built.registry, modelProfiles),
+                    built.owned
+                ) { it.close() }
+            } catch (error: Throwable) {
+                closeQuietly(built.owned)
+                throw error
+            }
+            val previous = configuration.getAndSet(installed)
             scope.launch {
                 try {
                     previous?.close()
@@ -271,7 +286,7 @@ class IndeRunCapacitorPlugin : Plugin() {
     fun readArtifact(call: PluginCall) {
         val requestJson = call.data
         // Read on the plugin call, like configure's swap, so a later configure cannot redirect it.
-        val target = engine.get()
+        val target = configuration.get()?.engine
         scope.launch {
             try {
                 val engine = requireEngine(target, "readArtifact(request)")
@@ -288,7 +303,7 @@ class IndeRunCapacitorPlugin : Plugin() {
     @PluginMethod
     fun disposeArtifact(call: PluginCall) {
         val artifactJson = call.data
-        val target = engine.get()
+        val target = configuration.get()?.engine
         scope.launch {
             try {
                 val engine = requireEngine(target, "disposeArtifact(artifact)")
@@ -303,14 +318,14 @@ class IndeRunCapacitorPlugin : Plugin() {
     }
 
     /**
-     * Closes the configured engine and keeps it, so every later call fails the way the closed
-     * engine fails it (`engine_closed`) until [configure] installs a new one. Nothing configured
-     * is nothing to close.
+     * Closes the configured engine, then the providers the bridge built for it, and keeps the
+     * engine, so every later call fails the way the closed engine fails it (`engine_closed`) until
+     * [configure] installs a new one. Nothing configured is nothing to close.
      */
     @PluginMethod
     fun close(call: PluginCall) {
         // Read on the plugin call: a configure that follows must not have its new engine closed.
-        val target = engine.get()
+        val target = configuration.get()
         scope.launch {
             try {
                 target?.close()
@@ -329,12 +344,18 @@ class IndeRunCapacitorPlugin : Plugin() {
         scope.cancel()
         // Closed outside the cancelled scope, without waiting: nobody is left to wait, and
         // the main thread must not block on in-flight runs.
-        engine.get()?.let { closing -> CoroutineScope(Dispatchers.Default).launch { closing.close() } }
+        configuration.get()?.let { closing ->
+            CoroutineScope(Dispatchers.Default).launch {
+                runCatching { closing.close() }.onFailure { error ->
+                    Log.w(LOG_TAG, "Closing the IndeRun engine at teardown failed.", error)
+                }
+            }
+        }
         super.handleOnDestroy()
     }
 
     /** The configured engine, closed or not: a closed one answers each call the way upstream defines. */
-    private fun requireEngine(call: String): IndeRun = requireEngine(engine.get(), call)
+    private fun requireEngine(call: String): IndeRun = requireEngine(configuration.get()?.engine, call)
 
     private fun requireEngine(target: IndeRun?, call: String): IndeRun = target
         ?: throw toIndeRunException(IllegalStateException("Capacitor IndeRun has not been configured. Configure providers before calling $call."))
@@ -354,9 +375,31 @@ class IndeRunCapacitorPlugin : Plugin() {
         )
     }
 
-    private fun createRegistry(openAI: OpenAIProviderBootstrapOptions?): ProviderRegistry {
-        val registry = AndroidProviderRegistryFactory.makeDefaultRegistry(context.applicationContext)
+    /**
+     * The default on-device registry plus what [options] asks for. Every provider or runtime built
+     * here that holds something to release is returned in `owned`, for [BridgedConfiguration] to
+     * close after the engine; if building fails part way, the ones already built are closed here.
+     */
+    private fun createRegistry(options: RunOptions): BridgedRegistry {
+        val appContext = context.applicationContext
+        val registry = AndroidProviderRegistryFactory.makeDefaultRegistry(appContext)
+        val owned = mutableListOf<AutoCloseable>()
+        try {
+            registerProviders(registry, options, appContext, owned)
+        } catch (error: Throwable) {
+            closeQuietly(owned)
+            throw error
+        }
+        return BridgedRegistry(registry, owned)
+    }
 
+    private fun registerProviders(
+        registry: ProviderRegistry,
+        options: RunOptions,
+        appContext: Context,
+        owned: MutableList<AutoCloseable>
+    ) {
+        val openAI = options.openAI
         if (openAI != null) {
             // Upstream's makeOpenAIRegistry builds a registry of its own, while this one also
             // carries the on-device provider; providerOptions(model) is the shared half, so the
@@ -374,7 +417,24 @@ class IndeRunCapacitorPlugin : Plugin() {
             openAI.models.forEach { model -> registry.register(OpenAIProvider(factory.providerOptions(model))) }
         }
 
-        return registry
+        // Opt-in (ADR 018): the router probes every registered provider on every request, so an
+        // app that does not speak should not bind a TTS service.
+        options.systemSpeech?.let { systemSpeech ->
+            val provider = AndroidSystemSpeechProvider(appContext, systemSpeech.id ?: AndroidSystemSpeechProvider.DEFAULT_ID)
+            owned += provider
+            registry.register(provider)
+        }
+
+        options.neuralSpeech?.forEach { entry ->
+            // One runtime per entry, closed with the configuration: the provider has no close of
+            // its own, and the runtime is what holds the loaded model.
+            val runtime = OnnxNeuralSpeechRuntime(appContext)
+            owned += runtime
+            registry.register(
+                NeuralSpeechProvider(entry.modelPackage, runtime, entry.id, entry.timeoutMs),
+                ProviderRegistrationOptions(autoDownload = entry.autoDownload ?: false)
+            )
+        }
     }
 }
 

@@ -31,9 +31,9 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// The new engine is installed on this call, before it returns, so configurations stay
     /// in Capacitor's call order and the next call reaches the new engine. Resolves once the
-    /// engine it replaced has closed.
+    /// engine it replaced has closed and the runtimes the bridge built for it are released.
     @objc func configure(_ call: CAPPluginCall) {
-        let previous: IndeRun?
+        let previous: BridgedConfiguration?
         do {
             previous = try implementation.configure(options: call.jsObjectRepresentation)
         } catch {
@@ -144,8 +144,9 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    /// Resolves once the engine has closed: its streams have reached their cancelled
-    /// terminal and its in-flight runs have finished.
+    /// Resolves once the engine has closed -- its streams have reached their cancelled
+    /// terminal and its in-flight runs have finished -- and the runtimes the bridge built for
+    /// it are released.
     @objc func close(_ call: CAPPluginCall) {
         Task {
             await implementation.close()

@@ -6,7 +6,17 @@ import type {
   TaskRequest,
   TaskResult
 } from "@independo/inderun-contracts";
-import type { IndeRunApi } from "@independo/inderun-web";
+import type {
+  GeneratedSpeech,
+  GenerateSpeechOptions,
+  IndeRunApi,
+  ListVoicesOptions,
+  SpeakOptions,
+  SpeechExecutionOptions,
+  SpeechPlayback,
+  SpeechVoiceInfo,
+  SpokenSpeech
+} from "@independo/inderun-web";
 import { registerPlugin } from "@capacitor/core";
 import type {
   ArtifactChunk,
@@ -15,6 +25,7 @@ import type {
   CheckCapabilitiesResult,
   ConfigureOptions,
   IndeRunCapacitorPlugin as IndeRunCapacitorPluginContract,
+  NeuralSpeechBootstrapOptions,
   OnnxProviderBootstrapOptions,
   OpenAIProviderBootstrapOptions,
   ProviderCapabilitySnapshot,
@@ -30,11 +41,23 @@ import type {
   StreamErrorNotification,
   StreamEventNotification,
   StreamRun,
-  SystemModelProviderBootstrapOptions
+  SystemModelProviderBootstrapOptions,
+  SystemSpeechBootstrapOptions
 } from "./definitions.js";
 import { decodeArtifactChunk } from "./artifacts.js";
 import { normalizePluginError } from "./errors.js";
 import { startCapacitorPrepare, startCapacitorStream } from "./streaming.js";
+
+/**
+ * The web SDK's speech facade, loaded on first use. A static import of the package root would
+ * put the whole web engine and its WASM route-core loader into every native app's initial
+ * bundle — this module is loaded on iOS and Android too — and the package exports no subpath
+ * for the facade alone. The facade only translates options into a `TaskRequest` and reads the
+ * result back; everything it calls goes through the `IndeRunApi` it is handed.
+ */
+function loadSpeechFacade(): Promise<typeof import("@independo/inderun-web")> {
+  return import("@independo/inderun-web");
+}
 
 const IndeRunCapacitorNative = registerPlugin<IndeRunCapacitorPluginContract>("IndeRunCapacitor", {
   web: () => import("./web.js").then((module) => new module.IndeRunWeb())
@@ -44,6 +67,10 @@ const IndeRunCapacitorNative = registerPlugin<IndeRunCapacitorPluginContract>("I
  * The plugin contract plus the ergonomic Mode 2 entry points. `stream()` and `prepare()`
  * are not plugin methods — each is `startStream` / `startPrepare`, the event listeners,
  * and `cancelStream` reassembled into the same shape the platform SDKs return.
+ *
+ * `speak()`, `generateSpeech()` and `listVoices()` are not plugin methods either: they are the
+ * web SDK's speech facade over this object, so a speech call is a `stream()`, a `run()` or a
+ * `checkCapabilities()` underneath, exactly as with the platform SDKs.
  */
 export interface IndeRunCapacitorApi
   extends Omit<IndeRunCapacitorPluginContract, "checkCapabilities" | "readArtifact"> {
@@ -53,6 +80,9 @@ export interface IndeRunCapacitorApi
   checkCapabilities(): Promise<ProviderCapabilitySnapshot[]>;
   /** The plugin's base64 transport decoded back into bytes, matching the platform SDKs. */
   readArtifact(request: ArtifactReadRequest): Promise<ArtifactChunk>;
+  speak(options: SpeakOptions): Promise<SpeechPlayback>;
+  generateSpeech(options: GenerateSpeechOptions): Promise<GeneratedSpeech>;
+  listVoices(options?: ListVoicesOptions): Promise<SpeechVoiceInfo[]>;
 }
 
 export const IndeRunCapacitor: IndeRunCapacitorApi = {
@@ -145,6 +175,21 @@ export const IndeRunCapacitor: IndeRunCapacitorApi = {
 
   prepare(request: PrepareRequest): Promise<StreamRun> {
     return startCapacitorPrepare(IndeRunCapacitorNative, request);
+  },
+
+  async speak(options: SpeakOptions): Promise<SpeechPlayback> {
+    const { speak } = await loadSpeechFacade();
+    return speak(IndeRunCapacitor, options);
+  },
+
+  async generateSpeech(options: GenerateSpeechOptions): Promise<GeneratedSpeech> {
+    const { generateSpeech } = await loadSpeechFacade();
+    return generateSpeech(IndeRunCapacitor, options);
+  },
+
+  async listVoices(options?: ListVoicesOptions): Promise<SpeechVoiceInfo[]> {
+    const { listVoices } = await loadSpeechFacade();
+    return listVoices(IndeRunCapacitor, options);
   }
 };
 
@@ -157,6 +202,11 @@ export const IndeRunCapacitor: IndeRunCapacitorApi = {
  * and `checkCapabilities()` reports no providers. To start over, create a new instance — or
  * call `IndeRunCapacitor.configure()`, which builds a fresh engine for every caller, since
  * the native plugin holds one engine at a time.
+ *
+ * `speak()`, `generateSpeech()` and `listVoices()` are the web SDK's speech facade over the
+ * instance itself: each configures first through the instance's own `stream()`, `run()` or
+ * `checkCapabilities()`. `generateSpeech()` returns an artifact handle; read its bytes with
+ * `readArtifact()` and release them with `disposeArtifact()`.
  */
 export interface IndeRunCapacitorInstance {
   run(request: TaskRequest): Promise<TaskResult>;
@@ -166,15 +216,19 @@ export interface IndeRunCapacitorInstance {
   readArtifact(request: ArtifactReadRequest): Promise<ArtifactChunk>;
   disposeArtifact(artifact: MediaArtifact): Promise<void>;
   close(): Promise<void>;
+  speak(options: SpeakOptions): Promise<SpeechPlayback>;
+  generateSpeech(options: GenerateSpeechOptions): Promise<GeneratedSpeech>;
+  listVoices(options?: ListVoicesOptions): Promise<SpeechVoiceInfo[]>;
 }
 
 /**
- * Compile-time guard: the instance must stay assignable to the web SDK's `IndeRunApi`, the
- * type its facade functions take. Lives here rather than in a test because `pnpm lint`
- * does not compile the test files.
+ * Compile-time guard: the instance and `IndeRunCapacitor` must stay assignable to the web
+ * SDK's `IndeRunApi`, the type its facade functions take — both hand themselves to it. Lives
+ * here rather than in a test because `pnpm lint` does not compile the test files.
  */
 type AssertIndeRunApi<T extends IndeRunApi> = T;
 type _InstanceIsIndeRunApi = AssertIndeRunApi<IndeRunCapacitorInstance>;
+type _CapacitorIsIndeRunApi = AssertIndeRunApi<IndeRunCapacitorApi>;
 
 export function createIndeRunCapacitor(options?: ConfigureOptions): IndeRunCapacitorInstance {
   let configured: Promise<void> | null = null;
@@ -187,7 +241,7 @@ export function createIndeRunCapacitor(options?: ConfigureOptions): IndeRunCapac
     return configured;
   }
 
-  return {
+  const instance: IndeRunCapacitorInstance = {
     async run(request: TaskRequest): Promise<TaskResult> {
       await ensureConfigured();
       return IndeRunCapacitor.run(request);
@@ -232,8 +286,25 @@ export function createIndeRunCapacitor(options?: ConfigureOptions): IndeRunCapac
         return;
       }
       await IndeRunCapacitor.close();
+    },
+
+    async speak(options: SpeakOptions): Promise<SpeechPlayback> {
+      const { speak } = await loadSpeechFacade();
+      return speak(instance, options);
+    },
+
+    async generateSpeech(options: GenerateSpeechOptions): Promise<GeneratedSpeech> {
+      const { generateSpeech } = await loadSpeechFacade();
+      return generateSpeech(instance, options);
+    },
+
+    async listVoices(options?: ListVoicesOptions): Promise<SpeechVoiceInfo[]> {
+      const { listVoices } = await loadSpeechFacade();
+      return listVoices(instance, options);
     }
   };
+
+  return instance;
 }
 
 export { STREAM_ERROR_NAME, STREAM_EVENT_NAME } from "./streaming.js";
@@ -244,7 +315,11 @@ export type {
   CancelStreamOptions,
   CheckCapabilitiesResult,
   ConfigureOptions,
+  GeneratedSpeech,
+  GenerateSpeechOptions,
   IndeRunCapacitorPluginContract as IndeRunCapacitorPlugin,
+  ListVoicesOptions,
+  NeuralSpeechBootstrapOptions,
   OnnxProviderBootstrapOptions,
   OpenAIProviderBootstrapOptions,
   ProviderCapabilitySnapshot,
@@ -255,12 +330,18 @@ export type {
   ProviderTaskAvailability,
   ProviderTaskCapability,
   ProviderVoice,
+  SpeakOptions,
+  SpeechExecutionOptions,
+  SpeechPlayback,
+  SpeechVoiceInfo,
+  SpokenSpeech,
   StartPrepareOptions,
   StartStreamOptions,
   StreamErrorNotification,
   StreamEventNotification,
   StreamRun,
   SystemModelProviderBootstrapOptions,
+  SystemSpeechBootstrapOptions,
   TaskRequest,
   TaskResult
 };

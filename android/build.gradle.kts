@@ -47,7 +47,10 @@ dependencies {
     implementation("app.independo.inderun:inderun-core:0.5.0-rc.20")
     implementation("app.independo.inderun:inderun-kotlin:0.5.0-rc.20")
     implementation("app.independo.inderun:inderun-mlkit-providers:0.5.0-rc.20")
+    implementation("app.independo.inderun:inderun-neural-speech:0.5.0-rc.20")
+    implementation("app.independo.inderun:inderun-onnx-providers:0.5.0-rc.20")
     implementation("app.independo.inderun:inderun-openai-providers:0.5.0-rc.20")
+    implementation("app.independo.inderun:inderun-system-speech-providers:0.5.0-rc.20")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
