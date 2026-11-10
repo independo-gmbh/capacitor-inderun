@@ -69,8 +69,16 @@ struct NeuralSpeechBootstrapOptions: Decodable {
     let autoDownload: Bool?
 }
 
+/// A developer-supplied ONNX text model; see `OnnxProviderBootstrapOptions` in src/definitions.ts.
+struct OnnxBootstrapOptions: Decodable {
+    let modelPackage: ModelPackage
+    let id: String?
+    let timeoutMs: Int?
+}
+
 struct CapacitorRunOptions: Decodable {
     let openAI: OpenAIProviderBootstrapOptions?
+    let onnx: OnnxBootstrapOptions?
     /// Profile name to ordered target ids, as `IndeRun(modelProfiles:)` takes it.
     let modelProfiles: [String: [String]]?
     let systemSpeech: SystemSpeechBootstrapOptions?
@@ -194,6 +202,7 @@ final class IndeRunCapacitorBridge {
         let modelProfiles = try makeModelProfiles(runOptions.modelProfiles)
         let built = try makeRegistry(
             openAI: runOptions.openAI,
+            onnx: runOptions.onnx,
             systemSpeech: runOptions.systemSpeech,
             neuralSpeech: runOptions.neuralSpeech
         )
@@ -425,6 +434,7 @@ final class IndeRunCapacitorBridge {
     ///   a test seam, the default closes them in the background.
     func makeRegistry(
         openAI: OpenAIProviderBootstrapOptions?,
+        onnx: OnnxBootstrapOptions? = nil,
         systemSpeech: SystemSpeechBootstrapOptions? = nil,
         neuralSpeech: [NeuralSpeechBootstrapOptions]? = nil,
         release: ([@Sendable () async -> Void]) -> Void = IndeRunCapacitorBridge.releaseInBackground
@@ -450,6 +460,20 @@ final class IndeRunCapacitorBridge {
             for model in openAI.models {
                 try registry.register(OpenAIProvider(options: factory.providerOptions(model: model)))
             }
+        }
+
+        if let onnx {
+            // The provider builds its own `SystemOnnxGenAiRuntime` when none is passed, loads the
+            // model lazily and has no close; nothing here for the bridge to own.
+            try registry.register(
+                OnnxRuntimeAppleProvider(
+                    options: OnnxProviderOptions(
+                        id: onnx.id ?? OnnxRuntimeAppleProvider.defaultId,
+                        modelPackage: onnx.modelPackage,
+                        timeout: onnx.timeoutMs.map { .milliseconds($0) }
+                    )
+                )
+            )
         }
 
         // Opt-in (ADR 018): the router probes every registered provider on every request, so

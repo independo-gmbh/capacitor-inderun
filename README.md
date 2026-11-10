@@ -266,13 +266,20 @@ files must be reachable by URL and the app installs the optional `onnxruntime-we
 see `NeuralSpeechBootstrapOptions`. The browser's system speech can only play audio, so
 `generateSpeech()` is refused there by routing.
 
-`systemModel`, `onnx` and `allowDirectOpenAIEndpoint` are **web-only** and ignored on iOS
-and Android, which register their own on-device provider from `configure()` regardless.
-`systemModel` registers the browser-managed on-device provider (Chrome's Prompt API) and is
-what makes `constraints.privacy = "local_required"` routable in a browser. Both on-device
-web providers are Mode 1 only.
+`systemModel` and `allowDirectOpenAIEndpoint` are **web-only** and ignored on iOS and Android,
+which register their own on-device provider from `configure()` regardless. `systemModel`
+registers the browser-managed on-device provider (Chrome's Prompt API) and is what makes
+`constraints.privacy = "local_required"` routable in a browser. Both on-device web providers
+are Mode 1 only.
 
-`onnx` carries two caveats. It needs the consumer to install the optional
+`onnx` runs a developer-supplied ONNX text model on every platform, Mode 1 only. On iOS and
+Android it registers ONNX Runtime's provider (id `local.onnx.genai.apple` or
+`local.onnx.genai.android` unless the options set `id`). The model files have to be on the device
+already, and the plugin downloads nothing: `modelPackage.source.sourceType` is `app_managed` (the
+app's storage under `source.ref`: Application Support on iOS, `context.filesDir` on Android),
+`filesystem` (an absolute path) or `bundled`. The same applies to `neuralSpeech` packages.
+
+On the web, `onnx` needs the consumer to install the optional
 `@huggingface/transformers` peer dependency — this bridge does not declare it — and to
 supply real model weights, because the web SDK's `runtime` injection seam is a function and
 so cannot cross a JSON bridge hop: only the default Transformers.js runtime is reachable

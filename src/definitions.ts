@@ -50,12 +50,22 @@ export interface SystemModelProviderBootstrapOptions {
 }
 
 /**
- * Bootstrap options for the Web ONNX Runtime provider, for a developer-supplied local
- * model.
+ * Bootstrap options for the ONNX Runtime text provider, for a developer-supplied local model.
+ * Mode 1 only. Runs on the web, iOS and Android.
  *
- * **Web only**, like `systemModel`, and Mode 1 only.
+ * **Model files on iOS and Android** (also for `neuralSpeech`): `modelPackage.source.sourceType`
+ * says where they are read from. `app_managed` is the app's own storage under `source.ref`
+ * (Application Support on iOS, `context.filesDir` on Android); `filesystem` is the absolute path
+ * in `source.ref`; `bundled` is a folder shipped inside the app. `registry` and `remote` are not
+ * supported, and the plugin downloads nothing for text models. On the web the files must be
+ * reachable by URL instead.
  *
- * Two caveats worth knowing before reaching for this. The consumer has to install the
+ * On iOS and Android this registers the platform's ONNX Runtime provider (default id
+ * `local.onnx.genai.apple` or `local.onnx.genai.android`, or `id`). It loads the model on first
+ * use and downloads nothing: the files have to be on the device already.
+ * `timeoutMs` bounds a run until it commits; a request's `constraints.timeoutMs` wins.
+ *
+ * Two caveats for the web. The consumer has to install the
  * optional `@huggingface/transformers` peer dependency — this bridge does not declare it —
  * and supply real model weights, because the web SDK's `runtime` seam is a function and so
  * cannot cross the JSON bridge hop: only the default Transformers.js runtime is reachable
@@ -104,9 +114,9 @@ export interface SystemSpeechBootstrapOptions {
  * - `timeoutMs` bounds the synthesis until the run commits; a request's `constraints.timeoutMs`
  *   wins.
  *
- * On iOS and Android the package's source names files on the device (`filesystem`, `bundled`,
- * `app_managed`). **On the web** the package files must be reachable by URL (`bundled` or
- * `app_managed`): `configure()` has to stay JSON, so the runtime is chosen by name, and a
+ * On iOS and Android the package's source names files on the device, see
+ * the model file paragraph on {@link OnnxProviderBootstrapOptions}. **On the web** the package
+ * files must be reachable by URL (`bundled` or `app_managed`): `configure()` has to stay JSON, so the runtime is chosen by name, and a
  * runtime that reads a package the app installed into OPFS cannot be passed across. The web
  * runtime also needs the optional `onnxruntime-web` peer dependency, which this plugin does not
  * declare: the app installs it.

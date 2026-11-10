@@ -87,20 +87,23 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
         XCTAssertEqual(options.allowDirectOpenAIEndpoint, true)
     }
 
-    /// `systemModel` and `onnx` are web-only bootstrap keys, like
-    /// `allowDirectOpenAIEndpoint`. Native registers its own on-device provider, so it must
-    /// ignore them rather than fail to decode the options object that carries them.
-    func testIgnoresTheWebOnlyProviderBootstrapKeys() throws {
+    /// `systemModel` is a web-only bootstrap key, like `allowDirectOpenAIEndpoint`. Native
+    /// registers its own on-device provider, so it must ignore it rather than fail to decode the
+    /// options object that carries it. `onnx` is not web-only: it decodes on native.
+    func testIgnoresTheWebOnlyProviderBootstrapKeysAndDecodesOnnx() throws {
         let json: [String: Any] = [
             "openAI": ["models": ["gpt-5.2"], "auth": "none"],
             "systemModel": ["id": "local.system-model.web", "timeoutMs": 30_000],
-            "onnx": ["modelPackage": ["id": "demo", "format": "onnx"]]
+            "onnx": ["modelPackage": ["id": "demo", "format": "onnx"], "id": "text.demo", "timeoutMs": 5_000]
         ]
         let data = try JSONSerialization.data(withJSONObject: json)
         let options = try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
 
         XCTAssertEqual(options.openAI?.models, ["gpt-5.2"])
         XCTAssertEqual(options.openAI?.auth, "none")
+        XCTAssertEqual(options.onnx?.modelPackage.id, "demo")
+        XCTAssertEqual(options.onnx?.id, "text.demo")
+        XCTAssertEqual(options.onnx?.timeoutMs, 5_000)
     }
 
     // MARK: - makeRegistry(openAI:)

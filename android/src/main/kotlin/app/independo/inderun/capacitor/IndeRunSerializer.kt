@@ -104,8 +104,16 @@ data class NeuralSpeechBootstrapOptions(
     val autoDownload: Boolean? = null
 )
 
+/** A developer-supplied ONNX text model; see `OnnxProviderBootstrapOptions` in src/definitions.ts. */
+data class OnnxBootstrapOptions(
+    val modelPackage: ModelPackage,
+    val id: String? = null,
+    val timeoutMs: Long? = null
+)
+
 data class RunOptions(
     val openAI: OpenAIProviderBootstrapOptions? = null,
+    val onnx: OnnxBootstrapOptions? = null,
     /** Profile name to ordered target ids, as `ModelProfiles` takes it. */
     val modelProfiles: Map<String, List<String>>? = null,
     /** Null when not asked for: system speech is opt-in (ADR 018). */
@@ -118,6 +126,13 @@ object IndeRunSerializer {
         return RunOptions(
             openAI = json.optJSONObject("openAI")?.let(::parseOpenAIOptions),
             modelProfiles = json.optJSONObject("modelProfiles")?.let(::parseModelProfiles),
+            onnx = json.optJSONObject("onnx")?.let { onnx ->
+                OnnxBootstrapOptions(
+                    modelPackage = parseModelPackage(onnx.getJSONObject("modelPackage")),
+                    id = onnx.optStringOrNull("id"),
+                    timeoutMs = onnx.optLongOrNull("timeoutMs")
+                )
+            },
             systemSpeech = parseSystemSpeechOptions(json),
             neuralSpeech = json.optJSONArray("neuralSpeech")?.let { entries ->
                 List(entries.length()) { index -> parseNeuralSpeechOptions(entries.getJSONObject(index)) }

@@ -9,6 +9,7 @@ import app.independo.inderun.core.StreamRun
 import app.independo.inderun.core.toIndeRunException
 import app.independo.inderun.providers.mlkit.AndroidProviderRegistryFactory
 import app.independo.inderun.providers.neuralspeech.NeuralSpeechProvider
+import app.independo.inderun.providers.onnx.AndroidOnnxRuntimeProvider
 import app.independo.inderun.providers.onnx.OnnxNeuralSpeechRuntime
 import app.independo.inderun.providers.openai.DEFAULT_OPENAI_RESPONSES_ENDPOINT
 import app.independo.inderun.providers.openai.OpenAIAuthMode
@@ -415,6 +416,19 @@ class IndeRunCapacitorPlugin : Plugin() {
                 timeoutMs = openAI.timeoutMs
             )
             openAI.models.forEach { model -> registry.register(OpenAIProvider(factory.providerOptions(model))) }
+        }
+
+        options.onnx?.let { onnx ->
+            // The convenience constructor builds the default runtime, which loads lazily and has
+            // no close, so there is nothing here for the bridge to own.
+            registry.register(
+                AndroidOnnxRuntimeProvider(
+                    appContext,
+                    onnx.modelPackage,
+                    onnx.id ?: AndroidOnnxRuntimeProvider.DEFAULT_ID,
+                    onnx.timeoutMs
+                )
+            )
         }
 
         // Opt-in (ADR 018): the router probes every registered provider on every request, so an

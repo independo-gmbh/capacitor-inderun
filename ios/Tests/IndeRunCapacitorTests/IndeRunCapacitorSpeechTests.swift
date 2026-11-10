@@ -49,6 +49,7 @@ final class IndeRunCapacitorSpeechTests: XCTestCase {
         let options = try decodeOptions(json)
         return try IndeRunCapacitorBridge().makeRegistry(
             openAI: options.openAI,
+            onnx: options.onnx,
             systemSpeech: options.systemSpeech,
             neuralSpeech: options.neuralSpeech
         )
@@ -126,6 +127,32 @@ final class IndeRunCapacitorSpeechTests: XCTestCase {
         XCTAssertTrue(built.registry.allowsAutoDownload(id: "speech.neural"))
         // One runtime per entry, each the bridge's to close.
         XCTAssertEqual(built.owned.count, 2)
+    }
+
+    private let textPackage: [String: Any] = [
+        "id": "phi-mini",
+        "format": "onnx",
+        "tasks": ["text_to_text"],
+        "source": ["sourceType": "filesystem", "ref": "/nonexistent/inderun-capacitor-tests/phi-mini"]
+    ]
+
+    func testRegistersTheOnnxTextProviderUnderTheUpstreamId() throws {
+        let built = try makeRegistry(["onnx": ["modelPackage": textPackage]])
+
+        XCTAssertTrue(providerIds(built).contains("local.onnx.genai.apple"))
+        XCTAssertTrue(built.owned.isEmpty)
+    }
+
+    func testRegistersTheOnnxTextProviderUnderAConfiguredId() throws {
+        let built = try makeRegistry(["onnx": ["modelPackage": textPackage, "id": "text.phi", "timeoutMs": 9_000]])
+
+        let ids = providerIds(built)
+        XCTAssertTrue(ids.contains("text.phi"))
+        XCTAssertFalse(ids.contains("local.onnx.genai.apple"))
+    }
+
+    func testRegistersNoOnnxTextProviderUnlessAsked() throws {
+        XCTAssertFalse(providerIds(try makeRegistry([:])).contains("local.onnx.genai.apple"))
     }
 
     func testRegistersACoreAIProviderUnderTheUpstreamId() throws {
