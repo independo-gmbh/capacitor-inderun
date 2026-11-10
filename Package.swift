@@ -47,7 +47,10 @@ let package = Package(
                 .product(name: "IndeRunAppleProviders", package: "IndeRun"),
                 .product(name: "IndeRunOpenAIProviders", package: "IndeRun"),
                 .product(name: "IndeRunNeuralSpeech", package: "IndeRun"),
-                .product(name: "IndeRunOnnxProviders", package: "IndeRun")
+                .product(name: "IndeRunOnnxProviders", package: "IndeRun"),
+                // Builds to a stub on an Xcode without the Core AI SDK (iOS 27), where a `coreai`
+                // provider reports itself unavailable instead of failing the build.
+                .product(name: "IndeRunCoreAIProviders", package: "IndeRun")
             ],
             path: "ios/Sources/IndeRunCapacitorPlugin"
         ),

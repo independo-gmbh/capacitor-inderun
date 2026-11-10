@@ -199,7 +199,7 @@ describe("IndeRunWeb", () => {
       ).rejects.toMatchObject({
         schemaVersion: "1.0",
         errorClass: "Internal",
-        message: expect.stringContaining("coreai")
+        message: "coreai neural speech runtime is not available on this platform"
       });
       expect(createIndeRunWebMock).not.toHaveBeenCalled();
     });

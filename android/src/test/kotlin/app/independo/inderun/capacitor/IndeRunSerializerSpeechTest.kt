@@ -314,6 +314,6 @@ class IndeRunSerializerSpeechTest {
 
         val contractError = error.toContractError()
         assertEquals(IndeRunErrorClass.Internal, contractError.errorClass)
-        assertEquals("coreai runtime is not available on Android", contractError.message)
+        assertEquals("coreai neural speech runtime is not available on this platform", contractError.message)
     }
 }

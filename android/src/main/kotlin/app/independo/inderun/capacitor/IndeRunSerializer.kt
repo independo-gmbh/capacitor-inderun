@@ -94,7 +94,8 @@ data class SystemSpeechBootstrapOptions(
 
 /**
  * One neural speech provider; see `NeuralSpeechBootstrapOptions` in src/definitions.ts. There is
- * no `runtime` here: ONNX is the only one Android has, and parsing refuses any other.
+ * no `runtime` here: ONNX is the only one Android has (Core AI is Apple's), and parsing refuses
+ * any other.
  */
 data class NeuralSpeechBootstrapOptions(
     val modelPackage: ModelPackage,
@@ -138,7 +139,8 @@ object IndeRunSerializer {
     private fun parseNeuralSpeechOptions(json: JSONObject): NeuralSpeechBootstrapOptions {
         val runtime = json.optStringOrNull("runtime")
         if (runtime != null && runtime != "onnx") {
-            throw createInternal("$runtime runtime is not available on Android")
+            // The same message as iOS and the web give for a runtime they do not have.
+            throw createInternal("$runtime neural speech runtime is not available on this platform")
         }
         return NeuralSpeechBootstrapOptions(
             modelPackage = parseModelPackage(json.getJSONObject("modelPackage")),

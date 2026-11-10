@@ -257,12 +257,14 @@ await playback.result;
 ```
 
 `neuralSpeech` registers one provider per entry, with id
-`local.onnx.speech.<apple|android|web>:<modelPackage.id>` unless the entry sets `id`. Its
-`runtime` defaults to `"onnx"`, the only one this build ships: `"coreai"` is refused by
-`configure()`. `autoDownload` (default off) lets `prepare()` start that provider's download on its
-own. On the web, the package files must be reachable by URL and the app installs the optional
-`onnxruntime-web` peer dependency; see `NeuralSpeechBootstrapOptions`. The browser's system speech
-can only play audio, so `generateSpeech()` is refused there by routing.
+`local.onnx.speech.<apple|android|web>:<modelPackage.id>` unless the entry sets `id`. Its `runtime`
+defaults to `"onnx"`. `runtime: "coreai"` runs a Core AI package on **iOS 27+** (id
+`local.coreai.speech.apple:<modelPackage.id>`); on older iOS the provider reports itself unavailable
+and routing skips it, and `configure()` refuses `"coreai"` on Android and the web. `autoDownload`
+(default off) lets `prepare()` start that provider's download on its own. On the web, the package
+files must be reachable by URL and the app installs the optional `onnxruntime-web` peer dependency;
+see `NeuralSpeechBootstrapOptions`. The browser's system speech can only play audio, so
+`generateSpeech()` is refused there by routing.
 
 `systemModel`, `onnx` and `allowDirectOpenAIEndpoint` are **web-only** and ignored on iOS
 and Android, which register their own on-device provider from `configure()` regardless.

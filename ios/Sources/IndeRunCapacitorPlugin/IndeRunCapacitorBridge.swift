@@ -7,6 +7,7 @@ import Foundation
 import IndeRunAppleProviders
 import IndeRunCore
 import IndeRunContracts
+import IndeRunCoreAIProviders
 import IndeRunNeuralSpeech
 import IndeRunOnnxProviders
 import IndeRunOpenAIProviders
@@ -61,7 +62,7 @@ struct SystemSpeechBootstrapOptions: Decodable {
 /// One neural speech provider; see `NeuralSpeechBootstrapOptions` in src/definitions.ts.
 struct NeuralSpeechBootstrapOptions: Decodable {
     let modelPackage: ModelPackage
-    /// `onnx` when absent, the only runtime this build links.
+    /// `onnx` when absent; `coreai` runs a `format: "coreai"` package on Apple Core AI.
     let runtime: String?
     let id: String?
     let timeoutMs: Int?
@@ -94,11 +95,14 @@ struct BridgedRegistry {
 /// configuration closed by `close()` and later replaced by `configure` is not released twice.
 final class BridgedConfiguration: @unchecked Sendable {
     let engine: IndeRun
+    /// The registry `configure` built the engine over; `nil` for an engine installed directly.
+    let registry: ProviderRegistry?
     private let lock = NSLock()
     private var owned: [@Sendable () async -> Void]
 
-    init(engine: IndeRun, owned: [@Sendable () async -> Void] = []) {
+    init(engine: IndeRun, registry: ProviderRegistry? = nil, owned: [@Sendable () async -> Void] = []) {
         self.engine = engine
+        self.registry = registry
         self.owned = owned
     }
 
@@ -196,6 +200,7 @@ final class IndeRunCapacitorBridge {
         return swap(
             BridgedConfiguration(
                 engine: IndeRun(registry: built.registry, hostServices: DefaultHostServices.make(), modelProfiles: modelProfiles),
+                registry: built.registry,
                 owned: built.owned
             )
         )
@@ -405,10 +410,24 @@ final class IndeRunCapacitorBridge {
         }
     }
 
+    /// Runs the closers of runtimes built for a configuration that never took effect, without
+    /// waiting: `configure` stays synchronous, and nothing is loaded into a runtime this early.
+    static func releaseInBackground(_ closers: [@Sendable () async -> Void]) {
+        guard !closers.isEmpty else { return }
+        Task {
+            for close in closers {
+                await close()
+            }
+        }
+    }
+
+    /// - Parameter release: What happens to the runtimes already built when a later step throws;
+    ///   a test seam, the default closes them in the background.
     func makeRegistry(
         openAI: OpenAIProviderBootstrapOptions?,
         systemSpeech: SystemSpeechBootstrapOptions? = nil,
-        neuralSpeech: [NeuralSpeechBootstrapOptions]? = nil
+        neuralSpeech: [NeuralSpeechBootstrapOptions]? = nil,
+        release: ([@Sendable () async -> Void]) -> Void = IndeRunCapacitorBridge.releaseInBackground
     ) throws -> BridgedRegistry {
         let registry = ProviderRegistry()
         var owned: [@Sendable () async -> Void] = []
@@ -439,29 +458,54 @@ final class IndeRunCapacitorBridge {
             try registry.register(AppleSystemSpeechProvider(id: systemSpeech.id ?? AppleSystemSpeechProvider.defaultId))
         }
 
-        for entry in neuralSpeech ?? [] {
-            // Refused rather than linked: the Core AI module (`IndeRunCoreAIProviders`) has not
-            // been shown to build with the Xcode this plugin's CI uses, and the plugin does not
-            // ship a module it cannot build there.
-            if let runtime = entry.runtime, runtime != "onnx" {
-                throw createInternal(message: "\(runtime) runtime is not available in this plugin build")
+        do {
+            for entry in neuralSpeech ?? [] {
+                let (provider, close) = try makeNeuralSpeechProvider(entry)
+                // Owned before registering, so a refused registration still closes it.
+                owned.append(close)
+                try registry.register(provider, options: ProviderRegistrationOptions(autoDownload: entry.autoDownload ?? false))
             }
-            // One runtime per entry, closed with the configuration: the provider has no close of
-            // its own, and the runtime is what holds the loaded model.
-            let runtime = OnnxNeuralSpeechRuntime()
-            let provider = NeuralSpeechProvider(
-                options: NeuralSpeechProviderOptions(
-                    id: entry.id,
-                    modelPackage: entry.modelPackage,
-                    runtime: runtime,
-                    timeout: entry.timeoutMs.map { .milliseconds($0) }
-                )
-            )
-            try registry.register(provider, options: ProviderRegistrationOptions(autoDownload: entry.autoDownload ?? false))
-            owned.append { await runtime.close() }
+        } catch {
+            release(owned)
+            throw error
         }
 
         return BridgedRegistry(registry: registry, owned: owned)
+    }
+
+    /// One provider and its own runtime, closed with the configuration: the provider has no close
+    /// of its own, and the runtime is what holds the loaded model.
+    ///
+    /// `coreai` composes what `makeCoreAINeuralSpeechProvider(options:)` composes -- the same id
+    /// prefix, a `CoreAINeuralSpeechRuntime` with default options -- rather than calling it,
+    /// because the factory keeps the runtime to itself and the bridge has to close it. Below
+    /// iOS 27, or in a build without the Core AI SDK, the runtime reports itself unavailable and
+    /// routing skips the provider; the bridge does not check the OS.
+    private func makeNeuralSpeechProvider(
+        _ entry: NeuralSpeechBootstrapOptions
+    ) throws -> (NeuralSpeechProvider, @Sendable () async -> Void) {
+        let timeout: Duration? = entry.timeoutMs.map { .milliseconds($0) }
+        switch entry.runtime ?? "onnx" {
+        case "onnx":
+            let runtime = OnnxNeuralSpeechRuntime()
+            let provider = NeuralSpeechProvider(
+                options: NeuralSpeechProviderOptions(id: entry.id, modelPackage: entry.modelPackage, runtime: runtime, timeout: timeout)
+            )
+            return (provider, { await runtime.close() })
+        case "coreai":
+            let runtime = CoreAINeuralSpeechRuntime()
+            let provider = NeuralSpeechProvider(
+                options: NeuralSpeechProviderOptions(
+                    id: entry.id ?? "\(NeuralSpeechProvider.coreAIDefaultId):\(entry.modelPackage.id)",
+                    modelPackage: entry.modelPackage,
+                    runtime: runtime,
+                    timeout: timeout
+                )
+            )
+            return (provider, { await runtime.close() })
+        case let other:
+            throw createInternal(message: "\(other) neural speech runtime is not available on this platform")
+        }
     }
 
     private func decodeConfigureOptions(from object: JSObject) throws -> CapacitorRunOptions {

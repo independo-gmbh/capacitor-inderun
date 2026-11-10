@@ -92,8 +92,12 @@ export interface SystemSpeechBootstrapOptions {
  * (`apple`, `android` or `web`) unless `id` is set, so one app can register several models side
  * by side. It plays through the platform's audio output and writes `audio/wav` artifacts.
  *
- * - `runtime` defaults to `"onnx"`, the only runtime this plugin build ships: `configure()`
- *   rejects `"coreai"` (Apple Core AI) on every platform.
+ * - `runtime` defaults to `"onnx"` (ONNX Runtime, every platform). `"coreai"` runs a
+ *   `format: "coreai"` package on Apple Core AI and is **iOS only**: its provider id defaults to
+ *   `local.coreai.speech.apple:<modelPackage.id>`, below iOS 27 the provider reports itself
+ *   unavailable and routing skips it, and preparing the model on a device needs the app's consent
+ *   (`autoDownload`, or `prepare({ allowDownload: true })`). `configure()` rejects `"coreai"` on
+ *   Android and the web.
  * - `autoDownload` lets `prepare()`, explicit or on the first run, start this provider's
  *   download on its own. Off by default, because a download can use mobile data; a single call
  *   can still allow one with `prepare({ allowDownload: true })`.

@@ -128,31 +128,68 @@ final class IndeRunCapacitorSpeechTests: XCTestCase {
         XCTAssertEqual(built.owned.count, 2)
     }
 
-    func testRefusesTheCoreAIRuntime() throws {
-        XCTAssertThrowsError(
-            try makeRegistry(["neuralSpeech": [["modelPackage": speechPackage, "runtime": "coreai"]]])
-        ) { error in
-            let contractError = toIndeRunException(error).toContractError()
-            XCTAssertEqual(contractError.errorClass, .Internal)
-            XCTAssertEqual(contractError.message, "coreai runtime is not available in this plugin build")
-        }
+    func testRegistersACoreAIProviderUnderTheUpstreamId() throws {
+        var coreAIPackage = speechPackage
+        coreAIPackage["format"] = "coreai"
+        let built = try makeRegistry([
+            "neuralSpeech": [
+                ["modelPackage": coreAIPackage, "runtime": "coreai"],
+                ["modelPackage": coreAIPackage, "runtime": "coreai", "id": "speech.coreai", "autoDownload": true]
+            ]
+        ])
+
+        let ids = providerIds(built)
+        XCTAssertTrue(ids.contains("local.coreai.speech.apple:articulino"))
+        XCTAssertTrue(ids.contains("speech.coreai"))
+        XCTAssertFalse(ids.contains("local.onnx.speech.apple:articulino"))
+        XCTAssertTrue(built.registry.allowsAutoDownload(id: "speech.coreai"))
+        XCTAssertEqual(built.owned.count, 2)
     }
 
-    func testTheOwnedCloserClosesTheNeuralRuntime() async throws {
-        let built = try makeRegistry(["neuralSpeech": [["modelPackage": speechPackage]]])
-        let provider = try XCTUnwrap(built.registry.get(id: "local.onnx.speech.apple:articulino"))
-        let host = DefaultHostServices.make()
-
-        let before = await provider.capabilities(host: host)
-        XCTAssertNotEqual(before.reason, "runtime closed")
+    func testTheOwnedCloserClosesTheCoreAIRuntime() async throws {
+        var coreAIPackage = speechPackage
+        coreAIPackage["format"] = "coreai"
+        let built = try makeRegistry(["neuralSpeech": [["modelPackage": coreAIPackage, "runtime": "coreai"]]])
+        let provider = try XCTUnwrap(built.registry.get(id: "local.coreai.speech.apple:articulino"))
 
         for close in built.owned {
             await close()
         }
 
-        let after = await provider.capabilities(host: host)
+        let after = await provider.capabilities(host: DefaultHostServices.make())
         XCTAssertFalse(after.available)
         XCTAssertEqual(after.reason, "runtime closed")
+    }
+
+    func testRefusesAnUnknownRuntime() throws {
+        XCTAssertThrowsError(
+            try makeRegistry(["neuralSpeech": [["modelPackage": speechPackage, "runtime": "tflite"]]])
+        ) { error in
+            let contractError = toIndeRunException(error).toContractError()
+            XCTAssertEqual(contractError.errorClass, .Internal)
+            XCTAssertEqual(contractError.message, "tflite neural speech runtime is not available on this platform")
+        }
+    }
+
+    func testReleasesTheRuntimesAlreadyBuiltWhenALaterEntryIsRefused() throws {
+        let options = try decodeOptions([
+            "neuralSpeech": [
+                ["modelPackage": speechPackage],
+                // The same id again: registering it throws after the first runtime exists.
+                ["modelPackage": speechPackage]
+            ]
+        ])
+        var released: [@Sendable () async -> Void] = []
+
+        XCTAssertThrowsError(
+            try IndeRunCapacitorBridge().makeRegistry(
+                openAI: nil,
+                neuralSpeech: options.neuralSpeech,
+                release: { released = $0 }
+            )
+        )
+        // Both runtimes were built; the second was owned before its registration was refused.
+        XCTAssertEqual(released.count, 2)
     }
 
     // MARK: - Closing what the bridge built
@@ -203,8 +240,16 @@ final class IndeRunCapacitorSpeechTests: XCTestCase {
         _ = try bridge.configure(options: ["neuralSpeech": [["modelPackage": speechPackage]]])
 
         let replaced = try XCTUnwrap(try bridge.configure(options: ["systemSpeech": true]))
+        let neural = try XCTUnwrap(replaced.registry?.get(id: "local.onnx.speech.apple:articulino"))
+        let host = DefaultHostServices.make()
+        let beforeClose = await neural.capabilities(host: host)
+        XCTAssertNotEqual(beforeClose.reason, "runtime closed")
+
         await replaced.close()
 
+        // The neural runtime the bridge built is closed with the configuration it belonged to.
+        let afterClose = await neural.capabilities(host: host)
+        XCTAssertEqual(afterClose.reason, "runtime closed")
         // The replaced engine is closed; the new one serves.
         let replacedProviders = await replaced.engine.checkCapabilities()
         XCTAssertTrue(replacedProviders.isEmpty)

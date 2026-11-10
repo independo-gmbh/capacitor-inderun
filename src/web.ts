@@ -333,9 +333,8 @@ function compactNeuralSpeechOptions(
   neuralSpeech: NonNullable<ConfigureOptions["neuralSpeech"]>[number]
 ): WebNeuralSpeechOptions {
   if (neuralSpeech.runtime !== undefined && neuralSpeech.runtime !== "onnx") {
-    throw new Error(
-      `The "${neuralSpeech.runtime}" neural speech runtime is not available on the web; use "onnx".`
-    );
+    // The same message as Android gives: Core AI is Apple's, and iOS is the only platform with it.
+    throw new Error(`${neuralSpeech.runtime} neural speech runtime is not available on this platform`);
   }
 
   const result: WebNeuralSpeechOptions = {
