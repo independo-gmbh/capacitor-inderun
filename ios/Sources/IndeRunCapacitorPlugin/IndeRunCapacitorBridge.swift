@@ -100,28 +100,39 @@ final class IndeRunCapacitorBridge {
         }
     }
 
-    func configure(options: JSObject) async throws {
+    /// Synchronous on purpose: decoding, validation and the engine swap all happen on the
+    /// plugin call, so configurations take effect in the order Capacitor delivered them and a
+    /// call issued right after `configure` already reaches the new engine. Only closing the
+    /// replaced engine is asynchronous; the caller awaits the returned engine's `close()` before
+    /// resolving.
+    ///
+    /// - Returns: The engine this configuration replaced, still to be closed.
+    func configure(options: JSObject) throws -> IndeRun? {
         let runOptions = try decodeConfigureOptions(from: options)
         // Validated and built before anything is replaced, so a refused configuration
         // leaves the previous engine in place rather than half of each.
         let modelProfiles = try makeModelProfiles(runOptions.modelProfiles)
         let registry = try makeRegistry(openAI: runOptions.openAI)
-        await install(
+        return swap(
             engine: IndeRun(registry: registry, hostServices: DefaultHostServices.make(), modelProfiles: modelProfiles)
         )
     }
 
-    /// Makes `engine` the one every later call uses, then closes the one it replaces. New
-    /// calls reach the new engine at once; this returns when the old one has closed, which
-    /// upstream defines as its streams and prepares ending in their cancelled terminal and
-    /// its in-flight runs finishing -- no longer.
-    func install(engine newEngine: IndeRun) async {
-        let previous = engineLock.withLock {
+    /// Makes `engine` the one every later call uses, at once, and hands back the one it
+    /// replaced for the caller to close.
+    func swap(engine newEngine: IndeRun) -> IndeRun? {
+        engineLock.withLock {
             let previous = engine
             engine = newEngine
             return previous
         }
-        await previous?.close()
+    }
+
+    /// `swap` followed by closing the replaced engine: returns when the old one has closed,
+    /// which upstream defines as its streams and prepares ending in their cancelled terminal
+    /// and its in-flight runs finishing -- no longer.
+    func install(engine newEngine: IndeRun) async {
+        await swap(engine: newEngine)?.close()
     }
 
     /// The configured engine, closed or not: a closed one answers every call the way

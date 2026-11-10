@@ -195,6 +195,66 @@ final class IndeRunCapacitorEngineTests: XCTestCase {
         XCTAssertEqual(providers?.first?["providerId"] as? String, ArtifactFixtureProvider.id)
     }
 
+    // MARK: - configure ordering
+
+    private func openAIOptions(_ model: String) -> JSObject {
+        ["openAI": ["models": [model], "auth": "none"]]
+    }
+
+    private func providerIds(_ bridge: IndeRunCapacitorBridge) async throws -> Set<String> {
+        let providers = try await bridge.checkCapabilities()["providers"] as? [[String: Any]] ?? []
+        return Set(providers.compactMap { $0["providerId"] as? String })
+    }
+
+    func testBackToBackConfiguresLeaveTheLaterOneInstalled() async throws {
+        let bridge = IndeRunCapacitorBridge()
+
+        // Neither replaced engine is awaited, as when two plugin calls arrive back to back.
+        _ = try bridge.configure(options: openAIOptions("first-model"))
+        let replaced = try bridge.configure(options: openAIOptions("second-model"))
+
+        let ids = try await providerIds(bridge)
+        XCTAssertTrue(ids.contains("openai:second-model"))
+        XCTAssertFalse(ids.contains("openai:first-model"))
+        await replaced?.close()
+        let afterClose = try await providerIds(bridge)
+        XCTAssertTrue(afterClose.contains("openai:second-model"))
+    }
+
+    func testConfigureInstallsTheEngineBeforeItReturns() async throws {
+        let bridge = IndeRunCapacitorBridge()
+
+        XCTAssertNil(try bridge.configure(options: openAIOptions("gpt-5.2")))
+
+        // The next call, issued without waiting for anything, reaches the configured engine.
+        let ids = try await providerIds(bridge)
+        XCTAssertTrue(ids.contains("openai:gpt-5.2"))
+    }
+
+    func testConfigureHandsBackTheReplacedEngineForTheCallerToClose() async throws {
+        let bridge = IndeRunCapacitorBridge()
+        let first = try makeEngine()
+        await bridge.install(engine: first)
+
+        let replaced = try bridge.configure(options: openAIOptions("gpt-5.2"))
+
+        XCTAssertTrue(replaced === first)
+        let stillOpen = await first.checkCapabilities()
+        XCTAssertFalse(stillOpen.isEmpty)
+        await replaced?.close()
+        let closed = await first.checkCapabilities()
+        XCTAssertTrue(closed.isEmpty)
+    }
+
+    func testARefusedConfigurationKeepsTheInstalledEngine() async throws {
+        let bridge = try await configuredBridge()
+
+        XCTAssertThrowsError(try bridge.configure(options: ["modelProfiles": ["auto": ["openai:gpt-5.2"]]]))
+
+        let ids = try await providerIds(bridge)
+        XCTAssertEqual(ids, [ArtifactFixtureProvider.id])
+    }
+
     // MARK: - close
 
     func testCloseLeavesTheEngineClosedUntilTheNextConfiguration() async throws {

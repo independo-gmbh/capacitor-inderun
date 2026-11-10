@@ -2,6 +2,7 @@
 import Capacitor
 import Foundation
 import IndeRunCore
+import IndeRunSwift
 
 @objc(IndeRunCapacitorPlugin)
 public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -28,15 +29,20 @@ public final class IndeRunCapacitorPlugin: CAPPlugin, CAPBridgedPlugin {
         implementation.teardown()
     }
 
-    /// Resolves once the engine this configuration replaces has closed.
+    /// The new engine is installed on this call, before it returns, so configurations stay
+    /// in Capacitor's call order and the next call reaches the new engine. Resolves once the
+    /// engine it replaced has closed.
     @objc func configure(_ call: CAPPluginCall) {
+        let previous: IndeRun?
+        do {
+            previous = try implementation.configure(options: call.jsObjectRepresentation)
+        } catch {
+            reject(call, with: error)
+            return
+        }
         Task {
-            do {
-                try await implementation.configure(options: call.jsObjectRepresentation)
-                call.resolve()
-            } catch {
-                reject(call, with: error)
-            }
+            await previous?.close()
+            call.resolve()
         }
     }
 
