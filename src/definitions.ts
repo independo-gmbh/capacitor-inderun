@@ -22,10 +22,22 @@ import type {
  * `providerId` that results, errors and provenance report. At least one model is required.
  */
 export interface OpenAIProviderBootstrapOptions {
+  /** Model names to register, one target each. At least one. */
   models: string[];
+  /**
+   * The Responses endpoint to call. Point it at a backend you control, which holds the API key;
+   * for a browser app, a same-origin proxy with `auth: "none"`.
+   */
   endpointUrl?: string;
+  /**
+   * How the request authenticates. `"none"` sends no credential, for a proxy that holds it.
+   * `"authContextRef"` resolves the one named by `authContextRef` through the host's secure
+   * storage. Never a raw secret.
+   */
   auth?: "authContextRef" | "none";
+  /** Secure-storage slot for the credential. Used with `auth: "authContextRef"`. */
   authContextRef?: string;
+  /** Bounds a request, in milliseconds. A request's `constraints.timeoutMs` wins. */
   timeoutMs?: number;
 }
 
@@ -45,7 +57,9 @@ export interface OpenAIProviderBootstrapOptions {
  * and `configure()` has to survive a JSON bridge hop on native.
  */
 export interface SystemModelProviderBootstrapOptions {
+  /** Provider id. Defaults to `local.system-model.web`. */
   id?: string;
+  /** Bounds a run until it commits, in milliseconds. A request's `constraints.timeoutMs` wins. */
   timeoutMs?: number;
 }
 
@@ -74,8 +88,11 @@ export interface SystemModelProviderBootstrapOptions {
  * register it only when the weights are actually there.
  */
 export interface OnnxProviderBootstrapOptions {
+  /** Provider id. Defaults to `local.onnx.genai.apple` or `local.onnx.genai.android`. */
   id?: string;
+  /** The model files and where they are. Describe each file's sha256 in `integrity.checksums`. */
   modelPackage: ModelPackage;
+  /** Bounds a run until it commits, in milliseconds. A request's `constraints.timeoutMs` wins. */
   timeoutMs?: number;
 }
 
@@ -91,6 +108,7 @@ export interface OnnxProviderBootstrapOptions {
  * `generateSpeech()` there.
  */
 export interface SystemSpeechBootstrapOptions {
+  /** Provider id. Defaults to `apple_system_speech`, `android_system_speech` or `web_system_speech`. */
   id?: string;
 }
 
@@ -122,14 +140,30 @@ export interface SystemSpeechBootstrapOptions {
  * declare: the app installs it.
  */
 export interface NeuralSpeechBootstrapOptions {
+  /**
+   * The model package. List a sha256 per file in `integrity.checksums`; the provider verifies
+   * each file before loading it.
+   */
   modelPackage: ModelPackage;
+  /** `"onnx"` (default, every platform) or `"coreai"` (iOS 27+ only). */
   runtime?: "onnx" | "coreai";
+  /** Provider id. See the id rule above. */
   id?: string;
+  /** Bounds the synthesis until the run commits, in milliseconds. */
   timeoutMs?: number;
+  /** Lets `prepare()` start this provider's download on its own. Off by default. */
   autoDownload?: boolean;
 }
 
+/**
+ * What to register in the engine `configure()` builds. Every field is optional on iOS and
+ * Android, which always register their own on-device text provider. On the web at least one
+ * of `openAI`, `systemModel`, `onnx`, `systemSpeech` or `neuralSpeech` is required.
+ *
+ * Nothing here is a cloud route unless you pass `openAI`.
+ */
 export interface ConfigureOptions {
+  /** The OpenAI-compatible cloud provider. Absent means no cloud route exists. */
   openAI?: OpenAIProviderBootstrapOptions;
   /**
    * Named model profiles: a profile name mapped to an ordered list of target ids
@@ -150,6 +184,11 @@ export interface ConfigureOptions {
   systemSpeech?: true | SystemSpeechBootstrapOptions;
   /** All platforms; one provider per entry. See `NeuralSpeechBootstrapOptions`. */
   neuralSpeech?: NeuralSpeechBootstrapOptions[];
+  /**
+   * Web only; ignored on iOS and Android. Explicit opt-in for calling a public Responses
+   * endpoint (OpenAI's or OpenRouter's) straight from the browser. Leave it unset and use a
+   * proxy endpoint with `openAI.auth = "none"`: direct calls can expose credentials.
+   */
   allowDirectOpenAIEndpoint?: boolean;
 }
 
@@ -292,6 +331,11 @@ export interface IndeRunCapacitorPlugin {
    * that fails validation leaves the previous engine in place.
    */
   configure(options?: ConfigureOptions): Promise<void>;
+  /**
+   * Executes a Mode 1 task and resolves with the completed `TaskResult`. Rejects with an
+   * `IndeRunError` on validation failure, when no provider is eligible, or when every attempted
+   * provider fails. The request is passed at the options root.
+   */
   run(request: TaskRequest): Promise<TaskResult>;
   /**
    * Live snapshot of every registered provider, without executing a task. Availability
@@ -312,6 +356,10 @@ export interface IndeRunCapacitorPlugin {
    * lists each preparation item; `cancelStream({ streamId })` cancels it.
    */
   startPrepare(options: StartPrepareOptions): Promise<StreamRunHandle>;
+  /**
+   * Cancels a stream or prepare run by its bridge-local `streamId`. Idempotent. No event is
+   * delivered after the cancel, and the run ends in one terminal `cancelled` event.
+   */
   cancelStream(options: CancelStreamOptions): Promise<void>;
   /**
    * Reads a byte range of an engine-owned media artifact a run produced. Like `run(request)`,
@@ -339,5 +387,6 @@ export interface IndeRunCapacitorPlugin {
     eventName: "indeRunStreamError",
     listenerFunc: (notification: StreamErrorNotification) => void
   ): Promise<PluginListenerHandle>;
+  /** Removes every listener this plugin holds, for both event names. */
   removeAllListeners(): Promise<void>;
 }
