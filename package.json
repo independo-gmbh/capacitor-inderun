@@ -1,9 +1,9 @@
 {
   "name": "@independo/capacitor-inderun",
   "version": "1.2.0",
-  "description": "On-device AI with cloud fallback for Capacitor apps. Apple Foundation Models on iOS, ML Kit GenAI (Gemini Nano) on Android, an OpenAI-compatible endpoint as fallback — one API, with streaming and cancellation.",
+  "description": "On-device AI and speech for Capacitor apps: Apple Foundation Models, Gemini Nano, ONNX models and system or neural voices behind one API. Cloud only when you allow it.",
   "license": "MIT",
-  "homepage": "https://github.com/independo-gmbh/capacitor-inderun#readme",
+  "homepage": "https://inderun.dev/docs/getting-started/capacitor",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/independo-gmbh/capacitor-inderun.git"
@@ -22,12 +22,15 @@
     "on-device-ai",
     "local-llm",
     "offline",
-    "cloud-fallback",
     "streaming",
     "openai",
     "gemini-nano",
     "ml-kit",
-    "foundation-models"
+    "foundation-models",
+    "speech",
+    "text-to-speech",
+    "tts",
+    "onnx"
   ],
   "engines": {
     "node": ">=24"
