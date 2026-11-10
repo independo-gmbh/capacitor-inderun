@@ -54,6 +54,14 @@ export function readSnippet(name) {
 const fence = (lang, body) =>
   `\n\`\`\`${lang}\n${body.endsWith("\n") ? body : `${body}\n`}\`\`\`\n`;
 
+const SWIFT_CONSTRAINTS = ["exact", "upToNextMinor"];
+
+/** How the SwiftPM pin reads in the supported-version table. */
+const swiftCell = (v) =>
+  v.swiftConstraint === "exact"
+    ? `\`${v.inderun}\` (exact)`
+    : `\`.upToNextMinor(from: "${v.inderun}")\``;
+
 /** Version blocks: each returns the Markdown that goes between its markers, newlines included. */
 export const VERSION_BLOCKS = {
   install: (v) => fence("sh", `pnpm add @independo/capacitor-inderun @capacitor/core@${v.capacitor}`),
@@ -62,8 +70,16 @@ export const VERSION_BLOCKS = {
   "supported-table": (v) =>
     "\n| Platform | Artifact | Constraint |\n|----------|----------|------------|\n" +
     `| Web      | \`@independo/inderun-web\`, \`@independo/inderun-contracts\` | \`${v.inderun}\` (exact) |\n` +
-    `| iOS      | \`inderun\` SwiftPM package | \`${v.inderun}\` (exact) |\n` +
+    `| iOS      | \`inderun\` SwiftPM package | ${swiftCell(v)} |\n` +
     `| Android  | \`app.independo.inderun:inderun-*\` | \`${v.inderun}\` (exact) |\n`,
+  // The paragraph after the table; which sentences apply depends on swiftConstraint.
+  "pin-policy": (v) =>
+    v.swiftConstraint === "exact"
+      ? "\nThe npm and Maven pins are exact and bumped together with the SwiftPM pin — a partial bump is how the platforms drift apart. " +
+        "The SwiftPM pin is exact only while the bridge tracks an `inderun` prerelease, because SwiftPM's range operators " +
+        "(`from:`, `.upToNextMinor`) exclude prerelease versions; it returns to a ranged constraint on the stable release.\n"
+      : "\nThe npm and Maven pins are exact and bumped together with the SwiftPM pin — a partial bump is how the platforms drift apart. " +
+        "SwiftPM takes the same version as `.upToNextMinor`, so an app that also depends on `inderun` directly can unify its graph.\n",
   // Inline, inside a table cell.
   "kotlin-plugin": (v) => `\`org.jetbrains.kotlin:kotlin-gradle-plugin:${v.kotlinGradlePlugin}\``,
   "kotlin-plugin-gradle": (v) =>
@@ -106,8 +122,12 @@ export function versionDrift(v = readVersions()) {
   expect("package.json dependencies[@independo/inderun-contracts]", pkg.dependencies?.["@independo/inderun-contracts"], v.inderun);
   expect("package.json peerDependencies[@capacitor/core]", pkg.peerDependencies?.["@capacitor/core"], `^${v.capacitor}.0.0`);
 
-  const swift = read("Package.swift").match(/inderun\.git",\s*(?:exact:|from:|\.upToNextMinor\(from:)\s*"([^"]+)"/);
-  expect("Package.swift inderun pin", swift?.[1], v.inderun);
+  if (!SWIFT_CONSTRAINTS.includes(v.swiftConstraint))
+    problems.push(`versions.json swiftConstraint: ${JSON.stringify(v.swiftConstraint)} is not one of ${SWIFT_CONSTRAINTS.join(", ")}`);
+  const swift = read("Package.swift").match(/inderun\.git",\s*(exact:|from:|\.upToNextMinor\(from:)\s*"([^"]+)"/);
+  expect("Package.swift inderun pin", swift?.[2], v.inderun);
+  const actualConstraint = swift ? (swift[1] === "exact:" ? "exact" : "upToNextMinor") : undefined;
+  expect("Package.swift inderun constraint", actualConstraint, v.swiftConstraint);
 
   const gradle = read("android/build.gradle.kts");
   const artifacts = [...gradle.matchAll(/"app\.independo\.inderun:[a-z-]+:([^"]+)"/g)];

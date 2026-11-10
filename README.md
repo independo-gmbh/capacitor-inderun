@@ -108,10 +108,9 @@ This release tracks <!-- version:inderun-version -->**IndeRun 0.5.0-rc.20**<!-- 
 | Android  | `app.independo.inderun:inderun-*` | `0.5.0-rc.20` (exact) |
 <!-- /version -->
 
-All three pins are exact and bumped together — a partial bump is how the platforms drift apart. The
-SwiftPM pin is exact only while the bridge tracks an `inderun` prerelease, because SwiftPM's range
-operators (`from:`, `.upToNextMinor`) exclude prerelease versions; it returns to a ranged constraint on
-the stable release.
+<!-- version:pin-policy -->
+The npm and Maven pins are exact and bumped together with the SwiftPM pin — a partial bump is how the platforms drift apart. The SwiftPM pin is exact only while the bridge tracks an `inderun` prerelease, because SwiftPM's range operators (`from:`, `.upToNextMinor`) exclude prerelease versions; it returns to a ranged constraint on the stable release.
+<!-- /version -->
 
 This package versions **independently** of the IndeRun monorepo under plain semver — the numbers are
 unrelated, and this bridge's own version says nothing about which IndeRun release it wraps. Read that

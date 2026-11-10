@@ -44,3 +44,4 @@ examples/local-first-starter/.env
 examples/local-first-starter/.env.*
 examples/local-first-starter/pnpm-lock.yaml
 examples/local-first-starter/pnpm-workspace.yaml
+snippets/.tsconfig.check.json
