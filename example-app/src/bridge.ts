@@ -64,8 +64,9 @@ export function buildConfigureOptions(choice: BootstrapChoice): ConfigureOptions
     };
   }
 
-  // Both keys are web-only and ignored on native, which registers Apple Foundation Models
-  // or ML Kit GenAI from configure() regardless of what is passed here.
+  // `systemModel` is web-only and ignored on native, which registers Apple Foundation Models
+  // or ML Kit GenAI from configure() regardless of what is passed here. (`onnx` below is also
+  // gated to the web, but only because this app's model id is a Hugging Face repo.)
   if (choice.systemModel && isWeb()) {
     options.systemModel = {};
   }

@@ -134,10 +134,10 @@ export interface SystemSpeechBootstrapOptions {
  *
  * On iOS and Android the package's source names files on the device, see
  * the model file paragraph on {@link OnnxProviderBootstrapOptions}. **On the web** the package
- * files must be reachable by URL (`bundled` or `app_managed`): `configure()` has to stay JSON, so the runtime is chosen by name, and a
- * runtime that reads a package the app installed into OPFS cannot be passed across. The web
- * runtime also needs the optional `onnxruntime-web` peer dependency, which this plugin does not
- * declare: the app installs it.
+ * files must be reachable by URL (`bundled` or `app_managed`): `configure()` has to stay JSON, so
+ * the runtime is chosen by name, and a runtime that reads a package the app installed into OPFS
+ * cannot be passed across. The web runtime also needs the optional `onnxruntime-web` peer
+ * dependency, which this plugin does not declare: the app installs it.
  */
 export interface NeuralSpeechBootstrapOptions {
   /**
@@ -178,7 +178,7 @@ export interface ConfigureOptions {
   modelProfiles?: Record<string, string[]>;
   /** Web only; native registers its own on-device provider. */
   systemModel?: SystemModelProviderBootstrapOptions;
-  /** Web only; native registers its own on-device provider. */
+  /** All platforms. See `OnnxProviderBootstrapOptions`, including its model file paragraph. */
   onnx?: OnnxProviderBootstrapOptions;
   /** All platforms, and never registered unless asked for. See `SystemSpeechBootstrapOptions`. */
   systemSpeech?: true | SystemSpeechBootstrapOptions;
