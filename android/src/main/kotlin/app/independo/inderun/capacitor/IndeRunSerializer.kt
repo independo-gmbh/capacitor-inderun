@@ -10,13 +10,19 @@ import app.independo.inderun.contracts.Message
 import app.independo.inderun.contracts.MessageRole
 import app.independo.inderun.contracts.OptimizeFor
 import app.independo.inderun.contracts.Outcome
-import app.independo.inderun.contracts.OutputType
 import app.independo.inderun.contracts.Payload
 import app.independo.inderun.contracts.PayloadError
 import app.independo.inderun.contracts.PayloadTelemetry
 import app.independo.inderun.contracts.PayloadUsage
 import app.independo.inderun.contracts.Phase
-import app.independo.inderun.contracts.PrivacyEnum
+import app.independo.inderun.contracts.Privacy
+import app.independo.inderun.contracts.ProviderCapabilitySnapshot
+import app.independo.inderun.contracts.ProviderDescriptor
+import app.independo.inderun.contracts.ProviderDynamicCapabilities
+import app.independo.inderun.contracts.ProviderPrivacy
+import app.independo.inderun.contracts.ProviderTaskAvailability
+import app.independo.inderun.contracts.ProviderTaskCapability
+import app.independo.inderun.contracts.ProviderVoice
 import app.independo.inderun.contracts.SchemaVersion
 import app.independo.inderun.contracts.StreamEvent
 import app.independo.inderun.contracts.StreamRunHandle
@@ -29,9 +35,6 @@ import app.independo.inderun.contracts.TaskRequestTelemetry
 import app.independo.inderun.contracts.TaskResult
 import app.independo.inderun.contracts.TaskResultTelemetry
 import app.independo.inderun.contracts.TelemetryLevel
-import app.independo.inderun.core.ProviderCapabilitySnapshot
-import app.independo.inderun.core.ProviderDescriptor
-import app.independo.inderun.core.ProviderDynamicCapabilities
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import org.json.JSONArray
@@ -211,9 +214,9 @@ object IndeRunSerializer {
         return JSObject().apply {
             put("id", descriptor.id)
             descriptor.model?.let { put("model", it) }
-            put("type", descriptor.type.name)
-            put("transport", descriptor.transport.name)
-            descriptor.streamingStyle?.let { put("streamingStyle", it.name) }
+            put("type", descriptor.type.rawValue)
+            put("transport", descriptor.transport.rawValue)
+            descriptor.streamingStyle?.let { put("streamingStyle", it.rawValue) }
             put(
                 "supports",
                 JSObject().apply {
@@ -226,8 +229,9 @@ object IndeRunSerializer {
                     put("multimodal", descriptor.supports.multimodal)
                 }
             )
-            put("cancel", descriptor.cancel.name)
+            put("cancel", descriptor.cancel.rawValue)
             put("tasks", JSArray().apply { descriptor.tasks.forEach { put(it) } })
+            descriptor.taskCapabilities?.let { put("taskCapabilities", encodeTaskCapabilities(it)) }
             descriptor.limits?.let { limits ->
                 put(
                     "limits",
@@ -239,14 +243,88 @@ object IndeRunSerializer {
                     }
                 )
             }
-            descriptor.privacy?.let { privacy ->
+            descriptor.privacy?.let { put("privacy", encodeProviderPrivacy(it)) }
+        }
+    }
+
+    private fun encodeProviderPrivacy(privacy: ProviderPrivacy): JSObject {
+        return JSObject().apply {
+            put("dataLeavesDevice", privacy.dataLeavesDevice)
+            privacy.regions?.let { regions -> put("regions", JSArray().apply { regions.forEach { put(it) } }) }
+        }
+    }
+
+    private fun encodeTaskCapabilities(capabilities: List<ProviderTaskCapability>): JSArray {
+        return JSArray().apply {
+            capabilities.forEach { capability ->
                 put(
-                    "privacy",
                     JSObject().apply {
-                        put("dataLeavesDevice", privacy.dataLeavesDevice)
-                        privacy.regions?.let { regions ->
-                            put("regions", JSArray().apply { regions.forEach { put(it) } })
-                        }
+                        put("kind", capability.kind)
+                        put("inputs", JSArray().apply { capability.inputs.forEach { put(it.rawValue) } })
+                        put(
+                            "interaction",
+                            JSObject().apply {
+                                put("run", capability.interaction.run)
+                                put("stream", capability.interaction.stream)
+                                capability.interaction.prepare?.let { put("prepare", it) }
+                            }
+                        )
+                        put("cancel", capability.cancel.rawValue)
+                        put(
+                            "outputs",
+                            JSArray().apply {
+                                capability.outputs.forEach { output ->
+                                    put(
+                                        JSObject().apply {
+                                            put("delivery", output.delivery.rawValue)
+                                            output.mediaTypes?.let { types ->
+                                                put("mediaTypes", JSArray().apply { types.forEach { put(it) } })
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        )
+                        capability.locales?.let { locales -> put("locales", JSArray().apply { locales.forEach { put(it) } }) }
+                        capability.privacy?.let { put("privacy", encodeProviderPrivacy(it)) }
+                    }
+                )
+            }
+        }
+    }
+
+    private fun encodeTaskAvailability(availability: List<ProviderTaskAvailability>): JSArray {
+        return JSArray().apply {
+            availability.forEach { task ->
+                put(
+                    JSObject().apply {
+                        put("kind", task.kind)
+                        task.available?.let { put("available", it) }
+                        task.cancellationAvailable?.let { put("cancellationAvailable", it) }
+                        task.locales?.let { locales -> put("locales", JSArray().apply { locales.forEach { put(it) } }) }
+                        task.readiness?.let { put("readiness", it.rawValue) }
+                        task.reason?.let { put("reason", it) }
+                        task.streamingAvailable?.let { put("streamingAvailable", it) }
+                        task.streamingUnavailableReason?.let { put("streamingUnavailableReason", it) }
+                        task.voices?.let { voices -> put("voices", encodeVoices(voices)) }
+                    }
+                )
+            }
+        }
+    }
+
+    private fun encodeVoices(voices: List<ProviderVoice>): JSArray {
+        return JSArray().apply {
+            voices.forEach { voice ->
+                put(
+                    JSObject().apply {
+                        put("locale", voice.locale)
+                        voice.gender?.let { put("gender", it.rawValue) }
+                        voice.id?.let { put("id", it) }
+                        voice.locales?.let { locales -> put("locales", JSArray().apply { locales.forEach { put(it) } }) }
+                        voice.name?.let { put("name", it) }
+                        voice.networkRequired?.let { put("networkRequired", it) }
+                        voice.readiness?.let { put("readiness", it.rawValue) }
                     }
                 )
             }
@@ -266,6 +344,7 @@ object IndeRunSerializer {
             capabilities.streamingAvailable?.let { put("streamingAvailable", it) }
             capabilities.streamingUnavailableReason?.let { put("streamingUnavailableReason", it) }
             capabilities.cancellationAvailable?.let { put("cancellationAvailable", it) }
+            capabilities.taskCapabilities?.let { put("taskCapabilities", encodeTaskAvailability(it)) }
         }
     }
 
@@ -451,12 +530,12 @@ object IndeRunSerializer {
         }
     }
 
-    private fun parsePrivacy(value: String): PrivacyEnum {
+    private fun parsePrivacy(value: String): Privacy {
         return when (value) {
-            "local_required" -> PrivacyEnum.LocalRequired
-            "local_preferred" -> PrivacyEnum.LocalPreferred
-            "cloud_allowed" -> PrivacyEnum.CloudAllowed
-            "cloud_required" -> PrivacyEnum.CloudRequired
+            "local_required" -> Privacy.LocalRequired
+            "local_preferred" -> Privacy.LocalPreferred
+            "cloud_allowed" -> Privacy.CloudAllowed
+            "cloud_required" -> Privacy.CloudRequired
             else -> throw IllegalArgumentException("Unsupported privacy constraint '$value'.")
         }
     }

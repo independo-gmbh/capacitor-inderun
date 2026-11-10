@@ -5,7 +5,7 @@ import IndeRunContracts
 func sampleProvenance(providerId: String = "openai:gpt-5.2") -> ExecutionProvenance {
     ExecutionProvenance(
         attemptCount: 1,
-        attempts: [ExecutionProvenanceAttempt(errorClass: nil, outcome: .succeeded, providerId: providerId)],
+        attempts: [ExecutionProvenanceAttempt(committed: nil, errorClass: nil, outcome: .succeeded, providerId: providerId)],
         configuredModel: "gpt-5.2",
         fallbackOccurred: false,
         locality: .cloud,

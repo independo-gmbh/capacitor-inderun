@@ -1,8 +1,17 @@
 package app.independo.inderun.capacitor
 
-import app.independo.inderun.core.ProviderCapabilitySnapshot
-import app.independo.inderun.core.ProviderDescriptor
-import app.independo.inderun.core.ProviderDynamicCapabilities
+import app.independo.inderun.contracts.CancelSemantics
+import app.independo.inderun.contracts.ProviderCapabilitySnapshot
+import app.independo.inderun.contracts.ProviderDescriptor
+import app.independo.inderun.contracts.ProviderDynamicCapabilities
+import app.independo.inderun.contracts.ProviderLimits
+import app.independo.inderun.contracts.ProviderPrivacy
+import app.independo.inderun.contracts.ProviderReadiness
+import app.independo.inderun.contracts.ProviderSupports
+import app.independo.inderun.contracts.ProviderTaskAvailability
+import app.independo.inderun.contracts.ProviderTransport
+import app.independo.inderun.contracts.ProviderType
+import app.independo.inderun.contracts.StreamingStyle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -12,13 +21,13 @@ class IndeRunSerializerCapabilitiesTest {
 
     private fun snapshot(
         providerId: String,
-        type: ProviderDescriptor.ProviderType,
-        transport: ProviderDescriptor.TransportType,
-        streamingStyle: ProviderDescriptor.StreamingStyle? = null,
+        type: ProviderType,
+        transport: ProviderTransport,
+        streamingStyle: StreamingStyle? = null,
         streaming: Boolean,
-        cancel: ProviderDescriptor.CancelSemantics,
-        limits: ProviderDescriptor.ResourceLimits? = null,
-        privacy: ProviderDescriptor.PrivacyDescriptor? = null,
+        cancel: CancelSemantics,
+        limits: ProviderLimits? = null,
+        privacy: ProviderPrivacy? = null,
         capabilities: ProviderDynamicCapabilities
     ): ProviderCapabilitySnapshot = ProviderCapabilitySnapshot(
         providerId = providerId,
@@ -27,7 +36,7 @@ class IndeRunSerializerCapabilitiesTest {
             type = type,
             transport = transport,
             streamingStyle = streamingStyle,
-            supports = ProviderDescriptor.SupportsCapabilities(
+            supports = ProviderSupports(
                 run = true,
                 streaming = streaming,
                 realtime = false,
@@ -50,16 +59,16 @@ class IndeRunSerializerCapabilitiesTest {
             listOf(
                 snapshot(
                     providerId = "openai",
-                    type = ProviderDescriptor.ProviderType.cloud,
-                    transport = ProviderDescriptor.TransportType.http,
-                    streamingStyle = ProviderDescriptor.StreamingStyle.tokens,
+                    type = ProviderType.Cloud,
+                    transport = ProviderTransport.HTTP,
+                    streamingStyle = StreamingStyle.Tokens,
                     streaming = true,
-                    cancel = ProviderDescriptor.CancelSemantics.hard,
-                    limits = ProviderDescriptor.ResourceLimits(
-                        maxInputTokens = 128_000,
-                        maxOutputTokens = 4_096
+                    cancel = CancelSemantics.Hard,
+                    limits = ProviderLimits(
+                        maxInputTokens = 128_000L,
+                        maxOutputTokens = 4_096L
                     ),
-                    privacy = ProviderDescriptor.PrivacyDescriptor(
+                    privacy = ProviderPrivacy(
                         dataLeavesDevice = true,
                         regions = listOf("us")
                     ),
@@ -116,10 +125,10 @@ class IndeRunSerializerCapabilitiesTest {
             listOf(
                 snapshot(
                     providerId = "local.onnx.genai.android",
-                    type = ProviderDescriptor.ProviderType.local,
-                    transport = ProviderDescriptor.TransportType.in_process,
+                    type = ProviderType.Local,
+                    transport = ProviderTransport.InProcess,
                     streaming = false,
-                    cancel = ProviderDescriptor.CancelSemantics.soft,
+                    cancel = CancelSemantics.Soft,
                     capabilities = ProviderDynamicCapabilities(
                         available = false,
                         reason = "No model package configured."
@@ -127,11 +136,11 @@ class IndeRunSerializerCapabilitiesTest {
                 ),
                 snapshot(
                     providerId = "android.mlkit.genai",
-                    type = ProviderDescriptor.ProviderType.local,
-                    transport = ProviderDescriptor.TransportType.system_service,
-                    streamingStyle = ProviderDescriptor.StreamingStyle.chunks,
+                    type = ProviderType.Local,
+                    transport = ProviderTransport.SystemService,
+                    streamingStyle = StreamingStyle.Chunks,
                     streaming = true,
-                    cancel = ProviderDescriptor.CancelSemantics.soft,
+                    cancel = CancelSemantics.Soft,
                     capabilities = ProviderDynamicCapabilities(available = true)
                 )
             )
@@ -163,10 +172,10 @@ class IndeRunSerializerCapabilitiesTest {
             listOf(
                 snapshot(
                     providerId = "android.mlkit.genai",
-                    type = ProviderDescriptor.ProviderType.local,
-                    transport = ProviderDescriptor.TransportType.system_service,
+                    type = ProviderType.Local,
+                    transport = ProviderTransport.SystemService,
                     streaming = true,
-                    cancel = ProviderDescriptor.CancelSemantics.soft,
+                    cancel = CancelSemantics.Soft,
                     capabilities = ProviderDynamicCapabilities(available = true)
                 )
             )
@@ -191,11 +200,11 @@ class IndeRunSerializerCapabilitiesTest {
             listOf(
                 snapshot(
                     providerId = "openai",
-                    type = ProviderDescriptor.ProviderType.cloud,
-                    transport = ProviderDescriptor.TransportType.http,
-                    streamingStyle = ProviderDescriptor.StreamingStyle.tokens,
+                    type = ProviderType.Cloud,
+                    transport = ProviderTransport.HTTP,
+                    streamingStyle = StreamingStyle.Tokens,
                     streaming = true,
-                    cancel = ProviderDescriptor.CancelSemantics.hard,
+                    cancel = CancelSemantics.Hard,
                     capabilities = ProviderDynamicCapabilities(
                         available = true,
                         streamingAvailable = false,
@@ -234,20 +243,52 @@ class IndeRunSerializerCapabilitiesTest {
     @Test
     fun `every descriptor enum constant maps to its declared wire value`() {
         assertEquals(
-            listOf("local", "edge", "cloud"),
-            ProviderDescriptor.ProviderType.values().map { it.name }
+            setOf("local", "edge", "cloud"),
+            ProviderType.entries.map { it.rawValue }.toSet()
         )
         assertEquals(
-            listOf("in_process", "system_service", "http", "sse", "realtime"),
-            ProviderDescriptor.TransportType.values().map { it.name }
+            setOf("in_process", "system_service", "http", "sse", "realtime"),
+            ProviderTransport.entries.map { it.rawValue }.toSet()
         )
         assertEquals(
-            listOf("tokens", "chunks", "snapshots"),
-            ProviderDescriptor.StreamingStyle.values().map { it.name }
+            setOf("tokens", "chunks", "snapshots"),
+            StreamingStyle.entries.map { it.rawValue }.toSet()
         )
         assertEquals(
-            listOf("hard", "soft", "none"),
-            ProviderDescriptor.CancelSemantics.values().map { it.name }
+            setOf("hard", "soft", "none"),
+            CancelSemantics.entries.map { it.rawValue }.toSet()
         )
+    }
+
+    @Test
+    fun `encodeCapabilitySnapshots carries per task readiness`() {
+        val encoded = IndeRunSerializer.encodeCapabilitySnapshots(
+            listOf(
+                snapshot(
+                    providerId = "local.onnx.genai.android",
+                    type = ProviderType.Local,
+                    transport = ProviderTransport.InProcess,
+                    streaming = false,
+                    cancel = CancelSemantics.Soft,
+                    capabilities = ProviderDynamicCapabilities(
+                        available = true,
+                        taskCapabilities = listOf(
+                            ProviderTaskAvailability(
+                                kind = "text_to_text",
+                                readiness = ProviderReadiness.NotPrepared
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val task = encoded.getJSONArray("providers")
+            .getJSONObject(0)
+            .getJSONObject("capabilities")
+            .getJSONArray("taskCapabilities")
+            .getJSONObject(0)
+        assertEquals("text_to_text", task.getString("kind"))
+        assertEquals("not_prepared", task.getString("readiness"))
     }
 }

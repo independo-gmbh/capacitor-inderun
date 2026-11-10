@@ -3,7 +3,8 @@ package app.independo.inderun.capacitor
 import app.independo.inderun.contracts.FinishReason
 import app.independo.inderun.contracts.IndeRunError
 import app.independo.inderun.contracts.IndeRunErrorClass
-import app.independo.inderun.contracts.Output
+import app.independo.inderun.contracts.TaskOutput
+import app.independo.inderun.contracts.TaskOutputType
 import app.independo.inderun.contracts.SchemaVersion
 import app.independo.inderun.contracts.TaskRequest
 import app.independo.inderun.contracts.TaskRequestTask
@@ -54,7 +55,7 @@ class IndeRunSerializerTest {
         val encoded = IndeRunSerializer.encodeTaskResult(
             TaskResult(
                 finishReason = FinishReason.STOP,
-                output = Output(text = "Hi"),
+                output = TaskOutput(text = "Hi", type = TaskOutputType.TEXT),
                 runId = "run_123",
                 schemaVersion = SchemaVersion.V1_0,
                 telemetry = TaskResultTelemetry(providerUsed = "openai", totalMs = 12.0)

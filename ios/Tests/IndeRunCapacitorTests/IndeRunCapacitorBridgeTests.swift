@@ -277,35 +277,37 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
 
     private func makeSnapshot(
         providerId: String,
-        type: ProviderDescriptor.ProviderType,
-        transport: ProviderDescriptor.TransportType,
-        streamingStyle: ProviderDescriptor.StreamingStyle? = nil,
+        type: ProviderType,
+        transport: ProviderTransport,
+        streamingStyle: StreamingStyle? = nil,
         streaming: Bool,
-        cancel: ProviderDescriptor.CancelSemantics,
-        limits: ProviderDescriptor.ResourceLimits? = nil,
-        privacy: ProviderDescriptor.PrivacyDescriptor? = nil,
+        cancel: CancelSemantics,
+        limits: ProviderLimits? = nil,
+        privacy: ProviderPrivacy? = nil,
         capabilities: ProviderDynamicCapabilities
     ) -> ProviderCapabilitySnapshot {
         ProviderCapabilitySnapshot(
             providerId: providerId,
             descriptor: ProviderDescriptor(
+                cancel: cancel,
                 id: providerId,
-                type: type,
-                transport: transport,
+                limits: limits,
+                model: nil,
+                privacy: privacy,
                 streamingStyle: streamingStyle,
-                supports: ProviderDescriptor.SupportsCapabilities(
+                supports: ProviderSupports(
+                    multimodal: false,
+                    realtime: false,
+                    reasoningEvents: false,
                     run: true,
                     streaming: streaming,
-                    realtime: false,
-                    tools: false,
-                    reasoningEvents: false,
                     structuredOutput: false,
-                    multimodal: false
+                    tools: false
                 ),
-                cancel: cancel,
+                taskCapabilities: nil,
                 tasks: ["text_to_text"],
-                limits: limits,
-                privacy: privacy
+                transport: transport,
+                type: type
             ),
             capabilities: capabilities
         )
@@ -321,9 +323,9 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
                 streamingStyle: .tokens,
                 streaming: true,
                 cancel: .hard,
-                limits: ProviderDescriptor.ResourceLimits(maxInputTokens: 128_000, maxOutputTokens: 4_096),
-                privacy: ProviderDescriptor.PrivacyDescriptor(dataLeavesDevice: true, regions: ["us"]),
-                capabilities: ProviderDynamicCapabilities(available: true)
+                limits: ProviderLimits(maxAudioSeconds: nil, maxImageBytes: nil, maxInputTokens: 128_000, maxOutputTokens: 4_096),
+                privacy: ProviderPrivacy(dataLeavesDevice: true, regions: ["us"]),
+                capabilities: ProviderDynamicCapabilities(available: true, cancellationAvailable: nil, reason: nil, streamingAvailable: nil, streamingUnavailableReason: nil, taskCapabilities: nil)
             )
         ])
 
@@ -364,7 +366,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
                 transport: .inProcess,
                 streaming: false,
                 cancel: .soft,
-                capabilities: ProviderDynamicCapabilities(available: false, reason: "No model package.")
+                capabilities: ProviderDynamicCapabilities(available: false, cancellationAvailable: nil, reason: "No model package.", streamingAvailable: nil, streamingUnavailableReason: nil, taskCapabilities: nil)
             )
         ])
 
@@ -390,7 +392,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
                 streamingStyle: .snapshots,
                 streaming: true,
                 cancel: .soft,
-                capabilities: ProviderDynamicCapabilities(available: true)
+                capabilities: ProviderDynamicCapabilities(available: true, cancellationAvailable: nil, reason: nil, streamingAvailable: nil, streamingUnavailableReason: nil, taskCapabilities: nil)
             )
         ])
 
@@ -420,9 +422,11 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
                 cancel: .hard,
                 capabilities: ProviderDynamicCapabilities(
                     available: true,
+                    cancellationAvailable: true,
+                    reason: nil,
                     streamingAvailable: false,
                     streamingUnavailableReason: "Host has no streaming HTTP client.",
-                    cancellationAvailable: true
+                    taskCapabilities: nil
                 )
             )
         ])

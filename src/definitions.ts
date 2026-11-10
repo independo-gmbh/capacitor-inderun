@@ -173,10 +173,55 @@ export interface ProviderDescriptor {
     maxImageBytes?: number;
     maxAudioSeconds?: number;
   };
-  privacy?: {
-    dataLeavesDevice: boolean;
-    regions?: string[];
-  };
+  privacy?: ProviderPrivacy;
+  /**
+   * Per-task static capabilities. Authoritative for routing when present; absent on a
+   * legacy descriptor, where only `text_to_text` is inferred from the fields above.
+   */
+  taskCapabilities?: ProviderTaskCapability[];
+}
+
+export interface ProviderPrivacy {
+  dataLeavesDevice: boolean;
+  regions?: string[];
+}
+
+/** The provider's static capabilities for one task kind. */
+export interface ProviderTaskCapability {
+  kind: string;
+  inputs: ("text" | "image" | "audio")[];
+  interaction: { run: boolean; stream: boolean; prepare?: boolean };
+  cancel: "hard" | "soft" | "none";
+  outputs: { delivery: "inline" | "playback" | "artifact"; mediaTypes?: string[] }[];
+  locales?: string[];
+  privacy?: ProviderPrivacy;
+}
+
+/** How ready a task (or a voice) is on this host: whether using it would first need preparing. */
+export type ProviderReadiness = "ready" | "cold" | "not_prepared" | "preparing";
+
+/** One speech voice a provider can render, as listed at `checkCapabilities()` time. */
+export interface ProviderVoice {
+  locale: string;
+  id?: string;
+  name?: string;
+  gender?: "female" | "male" | "neutral";
+  locales?: string[];
+  networkRequired?: boolean;
+  readiness?: ProviderReadiness;
+}
+
+/** A provider's live availability for one task kind. Absent fields inherit the task-wide values. */
+export interface ProviderTaskAvailability {
+  kind: string;
+  available?: boolean;
+  cancellationAvailable?: boolean;
+  locales?: string[];
+  readiness?: ProviderReadiness;
+  reason?: string;
+  streamingAvailable?: boolean;
+  streamingUnavailableReason?: string;
+  voices?: ProviderVoice[];
 }
 
 /**
@@ -193,6 +238,8 @@ export interface ProviderDynamicCapabilities {
   streamingAvailable?: boolean;
   streamingUnavailableReason?: string;
   cancellationAvailable?: boolean;
+  /** Per-task live availability, including `readiness`. Absent when the provider reports none. */
+  taskCapabilities?: ProviderTaskAvailability[];
 }
 
 /** One registered provider's identity, static declaration, and live availability. */

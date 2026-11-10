@@ -30,14 +30,12 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
-        // Ranged rather than `exact:` so a consumer that also depends on `inderun`
-        // directly can unify the graph. `.upToNextMinor` rather than `from:` because
-        // `from:` on a 0.x means `<1.0.0` — it would let SwiftPM float across a minor
-        // (where an 0.x SDK's breaking changes live) while package.json and
-        // android/build.gradle.kts stay pinned, which is exactly the three-platform
-        // drift the versioning policy forbids. Both operators exclude prereleases:
-        // tracking a `-dev.N` again requires going back to `exact:`.
-        .package(url: "https://github.com/independo-gmbh/inderun.git", .upToNextMinor(from: "0.4.0"))
+        // `exact:` while the bridge tracks an inderun prerelease: SwiftPM's range operators
+        // exclude prereleases, so `.upToNextMinor(from: "0.5.0-rc.N")` would silently resolve
+        // an older stable. Go back to `.upToNextMinor(from:)` once a stable 0.5.0 is pinned,
+        // so a consumer that also depends on `inderun` directly can unify the graph. See the
+        // versioning policy in AGENTS.md.
+        .package(url: "https://github.com/independo-gmbh/inderun.git", exact: "0.5.0-rc.20")
     ],
     targets: [
         .target(

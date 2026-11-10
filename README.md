@@ -92,18 +92,18 @@ supports 15.0"*.
 
 ## Supported IndeRun Version
 
-This release tracks **IndeRun 0.4.0** on all three platforms:
+This release tracks **IndeRun 0.5.0-rc.20** on all three platforms:
 
 | Platform | Artifact | Constraint |
 |----------|----------|------------|
-| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.4.0` (exact) |
-| iOS      | `inderun` SwiftPM package | `>=0.4.0 <0.5.0` |
-| Android  | `app.independo.inderun:inderun-*` | `0.4.0` (exact) |
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.5.0-rc.20` (exact) |
+| iOS      | `inderun` SwiftPM package | `0.5.0-rc.20` (exact) |
+| Android  | `app.independo.inderun:inderun-*` | `0.5.0-rc.20` (exact) |
 
-The npm and Gradle pins are exact and all three are bumped together — a partial bump is how the
-platforms drift apart. The SwiftPM constraint is ranged rather than exact so an app that also depends
-on `inderun` directly can still unify its package graph; it stops at the next minor because that is
-where an 0.x SDK's breaking changes live.
+All three pins are exact and bumped together — a partial bump is how the platforms drift apart. The
+SwiftPM pin is exact only while the bridge tracks an `inderun` prerelease, because SwiftPM's range
+operators (`from:`, `.upToNextMinor`) exclude prerelease versions; it returns to a ranged constraint on
+the stable release.
 
 This package versions **independently** of the IndeRun monorepo under plain semver — the numbers are
 unrelated, and this bridge's own version says nothing about which IndeRun release it wraps. Read that
