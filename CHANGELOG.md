@@ -1,3 +1,62 @@
+## [1.3.0](https://github.com/independo-gmbh/capacitor-inderun/compare/v1.2.0...v1.3.0) (2026-11-11)
+
+### ⚠ BREAKING CHANGES
+
+* the re-exported contract types now come from inderun 0.5.0-rc.20.
+`ProviderDescriptor` and `ProviderDynamicCapabilities` gain optional `taskCapabilities`
+(new exported types `ProviderTaskCapability`, `ProviderTaskAvailability`, `ProviderVoice`,
+`ProviderReadiness`, `ProviderPrivacy`). Consumers also depending on inderun directly must
+move to 0.5.0-rc.20 on every platform.
+The capability types (`ProviderCapabilitySnapshot`, `ProviderDescriptor`,
+`ProviderDynamicCapabilities`, and the types around them) are now aliases of the generated
+contract types: stricter shapes, and no declaration merging.
+`configure()` now keeps one native engine and closes the previous one: its in-flight streams
+and prepares end cancelled, its artifacts are released, and `configure()` waits for in-flight
+runs before it resolves.
+`onnx` is now registered on iOS and Android, not only on the web.
+The plugin now depends on ONNX Runtime, the neural speech modules and Core AI (iOS) or
+onnxruntime-android and DJL (Android), which increases app size even for apps that never use them.
+The low-level plugin contract gains `startPrepare`, `readArtifact`, `disposeArtifact` and `close`,
+so code that implements `IndeRunCapacitorPluginContract` itself must add them.
+
+### Features 🚀
+
+* keep one native engine per configuration and bridge prepare and artifacts ([1a8f434](https://github.com/independo-gmbh/capacitor-inderun/commit/1a8f434c4eb0790712010b086646d1c1051d447d))
+* run neural voices on Core AI on iOS 27 ([480c02f](https://github.com/independo-gmbh/capacitor-inderun/commit/480c02ff01f49f5c9d6ec3d4785fe021e371621e))
+* run ONNX text models on iOS and Android ([76e1162](https://github.com/independo-gmbh/capacitor-inderun/commit/76e1162a9f98ac02eafc5dffac369860067d1c47))
+* speak, generate and list voices through the bridge ([7b23020](https://github.com/independo-gmbh/capacitor-inderun/commit/7b230203a57f328285dab1efabf6264eb177ceb4))
+* track inderun 0.5.0-rc.20 ([6f56c1d](https://github.com/independo-gmbh/capacitor-inderun/commit/6f56c1dbfb181fe32e42fc297e3c5c6193d92743))
+
+### Bug Fixes 🛠️
+
+* **deps:** patch undici, fast-uri and vite advisories ([7560dde](https://github.com/independo-gmbh/capacitor-inderun/commit/7560dde2476d8580b99e0320e1a197333c1dea19))
+* **deps:** track inderun 0.5.0 ([7726bb9](https://github.com/independo-gmbh/capacitor-inderun/commit/7726bb9eff8200e84045c87fa6e92960c5096300))
+* **deps:** track inderun 0.5.0-rc.21 ([5e55188](https://github.com/independo-gmbh/capacitor-inderun/commit/5e55188906b8b3f76e3374aed7d7e23477273553))
+* harden engine replacement and artifact decoding ([e40c286](https://github.com/independo-gmbh/capacitor-inderun/commit/e40c286b705c7c90e75d789a15215910e42b393b))
+* keep generated snippet config out of git and derive the SwiftPM constraint from versions.json ([6c49195](https://github.com/independo-gmbh/capacitor-inderun/commit/6c4919520f5f9dcda294ababeff987d02b5dfc5f))
+* keep iOS configure ordered with the plugin call queue ([41f972b](https://github.com/independo-gmbh/capacitor-inderun/commit/41f972b572467eaf107cf1fe8ff00994f61ae3de))
+* match the SwiftPM operator exactly in the version drift check ([b55af4e](https://github.com/independo-gmbh/capacitor-inderun/commit/b55af4ee9828a4574f4fc4cb9908250cc9b78f47))
+* release ONNX text models and Core AI providers on reconfigure ([56b47a8](https://github.com/independo-gmbh/capacitor-inderun/commit/56b47a818c61f7be4680fedce40effaa1c57133f))
+
+### Documentation 📚
+
+* add a local-first starter app ([28eed2d](https://github.com/independo-gmbh/capacitor-inderun/commit/28eed2dfaeb031687dabd952cd61a0d827e10329))
+* describe native ONNX registration in the API reference ([9711c6c](https://github.com/independo-gmbh/capacitor-inderun/commit/9711c6cbe00d37f11544096a3fe3c4cec8bbc7b2))
+* document the public API with TSDoc ([9f4dfe2](https://github.com/independo-gmbh/capacitor-inderun/commit/9f4dfe2fceb4a2ff6bbe17a5017d82a1d9c4a6ab))
+* lead the README with local-first execution ([64a2444](https://github.com/independo-gmbh/capacitor-inderun/commit/64a24449be0d705ea9e4b3df4592b789f397ccf4))
+* retitle the bridge test app and add a speech panel ([609c028](https://github.com/independo-gmbh/capacitor-inderun/commit/609c02832925c50e45b5848c712b614ea9cc8c61))
+
+### Miscellaneous Chores 🛠️
+
+* **deps-dev:** bump the npm-routine group with 2 updates ([7fddccd](https://github.com/independo-gmbh/capacitor-inderun/commit/7fddccd38a06634c3f42a0345d98cbe04dc05ff2))
+* **deps:** bump org.jetbrains.kotlin:kotlin-gradle-plugin ([6eac2c7](https://github.com/independo-gmbh/capacitor-inderun/commit/6eac2c7cd6dd43d6b2ff9a9c4ff8919871bcd297))
+* **deps:** bump the gradle-routine group across 1 directory with 2 updates ([a5e9428](https://github.com/independo-gmbh/capacitor-inderun/commit/a5e942815ae6c6827a3a916795c0ac8811660d3c))
+* type-check README snippets with ADR 024 markers ([e5d973d](https://github.com/independo-gmbh/capacitor-inderun/commit/e5d973d920bbc4644af042e6daf480458c9cc44f))
+
+### CI/CD 👷
+
+* compile the iOS plugin sources for the simulator ([3c1c85e](https://github.com/independo-gmbh/capacitor-inderun/commit/3c1c85ecffd26e430f56b184010cbc0bdecba9b8))
+
 ## [1.2.0](https://github.com/independo-gmbh/capacitor-inderun/compare/v1.1.1...v1.2.0) (2026-10-21)
 
 ### ⚠ BREAKING CHANGES
