@@ -57,12 +57,14 @@ function terminal(
 interface FakePlugin {
   plugin: IndeRunCapacitorPlugin;
   startStream: ReturnType<typeof vi.fn>;
+  startPrepare: ReturnType<typeof vi.fn>;
   cancelStream: ReturnType<typeof vi.fn>;
   addListener: ReturnType<typeof vi.fn>;
   removes: ReturnType<typeof vi.fn>[];
   emitEvent(streamId: string, event: StreamEvent): void;
   emitError(streamId: string, error: unknown): void;
   lastStreamId(): string;
+  lastPrepareId(): string;
 }
 
 function createFakePlugin(handle: StreamRunHandle = handleFor("run_1")): FakePlugin {
@@ -70,6 +72,7 @@ function createFakePlugin(handle: StreamRunHandle = handleFor("run_1")): FakePlu
   const removes: ReturnType<typeof vi.fn>[] = [];
 
   const startStream = vi.fn().mockResolvedValue(handle);
+  const startPrepare = vi.fn().mockResolvedValue(handle);
   const cancelStream = vi.fn().mockResolvedValue(undefined);
   const addListener = vi.fn(async (name: string, callback: (notification: unknown) => void) => {
     listeners.push({ name, callback });
@@ -82,6 +85,7 @@ function createFakePlugin(handle: StreamRunHandle = handleFor("run_1")): FakePlu
     configure: vi.fn(),
     run: vi.fn(),
     startStream,
+    startPrepare,
     cancelStream,
     addListener,
     removeAllListeners: vi.fn()
@@ -98,6 +102,7 @@ function createFakePlugin(handle: StreamRunHandle = handleFor("run_1")): FakePlu
   return {
     plugin,
     startStream,
+    startPrepare,
     cancelStream,
     addListener,
     removes,
@@ -105,6 +110,9 @@ function createFakePlugin(handle: StreamRunHandle = handleFor("run_1")): FakePlu
     emitError: (streamId, error) => dispatch("indeRunStreamError", { streamId, error }),
     lastStreamId: () =>
       (startStream.mock.calls[startStream.mock.calls.length - 1][0] as { streamId: string })
+        .streamId,
+    lastPrepareId: () =>
+      (startPrepare.mock.calls[startPrepare.mock.calls.length - 1][0] as { streamId: string })
         .streamId
   };
 }
@@ -126,6 +134,12 @@ async function freshStart(): Promise<typeof import("./streaming.js").startCapaci
   vi.resetModules();
   const module = await import("./streaming.js");
   return module.startCapacitorStream;
+}
+
+async function freshStartPrepare(): Promise<typeof import("./streaming.js").startCapacitorPrepare> {
+  vi.resetModules();
+  const module = await import("./streaming.js");
+  return module.startCapacitorPrepare;
 }
 
 describe("startCapacitorStream", () => {
@@ -596,5 +610,77 @@ describe("startCapacitorStream", () => {
 
       await expect(collected).resolves.toHaveLength(1);
     });
+  });
+});
+
+describe("startCapacitorPrepare", () => {
+  let startCapacitorPrepare: Awaited<ReturnType<typeof freshStartPrepare>>;
+
+  beforeEach(async () => {
+    startCapacitorPrepare = await freshStartPrepare();
+  });
+
+  function progress(sequence: number, fractionCompleted: number): StreamEvent {
+    return {
+      schemaVersion: "1.0",
+      runId: "run_1",
+      sequence,
+      timestamp: 1_700_000_000_000 + sequence,
+      type: "preparation_progress",
+      payload: { providerId: "local.speech", task: "text_to_speech", fractionCompleted }
+    };
+  }
+
+  it("starts through startPrepare, never startStream, with the request nested", async () => {
+    const fake = createFakePlugin();
+    const request = { tasks: ["text_to_speech"], allowDownload: true };
+
+    const run = await startCapacitorPrepare(fake.plugin, request);
+    fake.emitEvent(fake.lastPrepareId(), terminal(0));
+    await collect(run);
+
+    expect(fake.startStream).not.toHaveBeenCalled();
+    expect(fake.startPrepare).toHaveBeenCalledWith({ streamId: fake.lastPrepareId(), request });
+    expect(run.handle).toEqual(handleFor("run_1"));
+  });
+
+  it("yields progress and the terminal in sequence order, not arrival order", async () => {
+    const fake = createFakePlugin();
+    const run = await startCapacitorPrepare(fake.plugin, {});
+    const streamId = fake.lastPrepareId();
+
+    fake.emitEvent(streamId, progress(1, 1));
+    fake.emitEvent(streamId, terminal(2));
+    fake.emitEvent(streamId, progress(0, 0.5));
+
+    const events = await collect(run);
+    expect(events.map((event) => event.sequence)).toEqual([0, 1, 2]);
+    expect(events.every((event) => validateStreamEvent(event))).toBe(true);
+  });
+
+  it("cancels through cancelStream with the prepare's streamId", async () => {
+    const fake = createFakePlugin();
+    const run = await startCapacitorPrepare(fake.plugin, {});
+    const streamId = fake.lastPrepareId();
+
+    run.cancel("not now");
+    expect(fake.cancelStream).toHaveBeenCalledWith({ streamId, reason: "not now" });
+
+    fake.emitEvent(streamId, terminal(0, "cancelled"));
+    const events = await collect(run);
+    expect((events[0].payload as { outcome: string }).outcome).toBe("cancelled");
+  });
+
+  it("unwraps a Capacitor rejection envelope from startPrepare", async () => {
+    const fake = createFakePlugin();
+    const engineClosed = {
+      schemaVersion: "1.0",
+      errorClass: "Unavailable",
+      message: "The engine is closed.",
+      details: { code: "engine_closed" }
+    };
+    fake.startPrepare.mockRejectedValue({ message: "closed", data: engineClosed });
+
+    await expect(startCapacitorPrepare(fake.plugin, {})).rejects.toEqual(engineClosed);
   });
 });

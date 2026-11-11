@@ -10,16 +10,21 @@ import app.independo.inderun.contracts.IndeRunError
 import app.independo.inderun.contracts.IndeRunErrorClass
 import app.independo.inderun.contracts.Locality
 import app.independo.inderun.contracts.Outcome
-import app.independo.inderun.contracts.Output
+import app.independo.inderun.contracts.TaskOutput
+import app.independo.inderun.contracts.TaskOutputType
 import app.independo.inderun.contracts.Payload
 import app.independo.inderun.contracts.PayloadError
 import app.independo.inderun.contracts.SchemaVersion
 import app.independo.inderun.contracts.StreamEvent
 import app.independo.inderun.contracts.TaskResult
 import app.independo.inderun.contracts.TaskResultTelemetry
-import app.independo.inderun.core.ProviderCapabilitySnapshot
-import app.independo.inderun.core.ProviderDescriptor
-import app.independo.inderun.core.ProviderDynamicCapabilities
+import app.independo.inderun.contracts.CancelSemantics
+import app.independo.inderun.contracts.ProviderCapabilitySnapshot
+import app.independo.inderun.contracts.ProviderDescriptor
+import app.independo.inderun.contracts.ProviderDynamicCapabilities
+import app.independo.inderun.contracts.ProviderSupports
+import app.independo.inderun.contracts.ProviderTransport
+import app.independo.inderun.contracts.ProviderType
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -122,7 +127,7 @@ class IndeRunSerializerProvenanceTest {
         val encoded = IndeRunSerializer.encodeTaskResult(
             TaskResult(
                 finishReason = FinishReason.STOP,
-                output = Output(text = "Hi"),
+                output = TaskOutput(text = "Hi", type = TaskOutputType.TEXT),
                 provenance = provenance,
                 runId = "run_1",
                 schemaVersion = SchemaVersion.V1_0,
@@ -137,7 +142,7 @@ class IndeRunSerializerProvenanceTest {
         val encoded = IndeRunSerializer.encodeTaskResult(
             TaskResult(
                 finishReason = FinishReason.STOP,
-                output = Output(text = "Hi"),
+                output = TaskOutput(text = "Hi", type = TaskOutputType.TEXT),
                 runId = "run_1",
                 schemaVersion = SchemaVersion.V1_0,
                 telemetry = TaskResultTelemetry(providerUsed = "openai:gpt-5.2", totalMs = 12.0)
@@ -187,9 +192,9 @@ class IndeRunSerializerProvenanceTest {
         fun descriptor(id: String, model: String?) = ProviderDescriptor(
             id = id,
             model = model,
-            type = ProviderDescriptor.ProviderType.cloud,
-            transport = ProviderDescriptor.TransportType.http,
-            supports = ProviderDescriptor.SupportsCapabilities(
+            type = ProviderType.Cloud,
+            transport = ProviderTransport.HTTP,
+            supports = ProviderSupports(
                 run = true,
                 streaming = true,
                 realtime = false,
@@ -198,7 +203,7 @@ class IndeRunSerializerProvenanceTest {
                 structuredOutput = false,
                 multimodal = false
             ),
-            cancel = ProviderDescriptor.CancelSemantics.hard,
+            cancel = CancelSemantics.Hard,
             tasks = listOf("text_to_text")
         )
         val encoded = IndeRunSerializer.encodeCapabilitySnapshots(

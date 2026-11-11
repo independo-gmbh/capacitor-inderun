@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>IndeRun Starter</title>
+  </head>
+  <body>
+    <h1>IndeRun Starter</h1>
+    <p class="sub">Text and speech that stay on this device. No cloud, no account.</p>
+
+    <section>
+      <h2>What runs on this device</h2>
+      <ul id="providers"></ul>
+      <button id="refresh">Check again</button>
+    </section>
+
+    <section>
+      <h2>Ask</h2>
+      <p class="note">
+        The request says <code>local_required</code>. If this device has no on-device model,
+        IndeRun refuses instead of sending your prompt anywhere. A refusal is a valid answer.
+      </p>
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt">Explain in two sentences why on-device AI matters.</textarea>
+      <button id="run" class="primary">Run</button>
+      <div id="answer" class="result" hidden></div>
+    </section>
+
+    <section>
+      <h2>Speak</h2>
+      <label for="speech-text">Text</label>
+      <textarea id="speech-text">Der Bus kommt in fünf Minuten.</textarea>
+      <label for="locale">Language</label>
+      <select id="locale">
+        <option value="de-AT">de-AT</option>
+        <option value="en-US">en-US</option>
+      </select>
+      <div class="row">
+        <button id="speak" class="primary">Speak</button>
+        <button id="stop" disabled>Stop</button>
+      </div>
+      <p id="speech-status" class="note"></p>
+    </section>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,9 +1,10 @@
-# IndeRun bridge demo app
+# Diagnostic and bridge test app
 
-An unpublished Capacitor app that demonstrates what the bridge actually does — streaming,
-provider routing, and the three failure surfaces — and doubles as the device smoke test. It
-is the only way to exercise the parts the unit suites cannot: Capacitor's real listener
-transport, plugin teardown, and the native engines end to end.
+This is an unpublished Capacitor app for testing the bridge on devices: streaming, provider
+routing, the three failure surfaces and speech. It is the only way to exercise the parts the
+unit suites cannot: Capacitor's real listener transport, plugin teardown, and the native engines
+end to end. It is not a template. If you are building an app, start from
+[`../examples/local-first-starter/`](../examples/local-first-starter/) instead.
 
 Not part of the published package (`files` in the root `package.json` is an allowlist), not
 part of SwiftPM (every target declares an explicit path under `ios/`), and not part of CI
@@ -22,6 +23,9 @@ part of SwiftPM (every target declares an explicit path under `ios/`), and not p
   (`telemetry.providerUsed`), the content style **observed** versus declared, and a
   per-run event log with `sequence` and the gap between events in milliseconds.
 - **The three failure surfaces**, rendered as three visibly different things — see below.
+- **Speech** — system voices (list, speak, stop, generate a WAV and read it back through
+  `readArtifact`) and the Articulino neural voice: download from a checksummed catalog entry,
+  `prepare()` with progress, a voice picker, speak, stop, generate. See below.
 
 ## Setup
 
@@ -135,6 +139,31 @@ needs the optional `@huggingface/transformers` peer dependency installed and dow
 weights on first use. It is Mode 1 only. The web SDK's runtime-injection seam is a function,
 so it cannot cross the plugin's JSON options boundary — meaning the fixture runtime the
 upstream demos use offline is not reachable from Capacitor, only the real one.
+
+## Speech panel
+
+Everything runs with `execution.privacy = "local_required"`, and a refusal is printed as a result,
+not hidden. The panel shares one engine configuration with the text panels, so tapping around does
+not reload the neural model.
+
+- **System voices**: *List voices* shows the count for the chosen locale and how many need the
+  network. *Speak* and *Stop* play and cancel. *Generate WAV* calls `generateSpeech()`, reads every
+  byte with `readArtifact()`, prints the byte count and the sample rate from the WAV header, and
+  disposes the artifact. (The browser's system speech cannot generate, so that is refused there.)
+- **Neural voice** (native only): *Download Articulino* fetches the `articulino-de-en-int8` entry of
+  upstream's neural model catalog (about 95 MB, `src/neural-catalog.json`) with
+  `@capacitor/filesystem`, skipping files whose size already matches. *Prepare* reconfigures with
+  `neuralSpeech: [{ modelPackage }]` plus `systemSpeech: true` and the model profile
+  `voices-lab:articulino-de-en-int8` = neural provider, then system provider, and runs `prepare()`
+  with progress. The provider verifies each file's sha256 there; a mismatch is printed as a failed
+  item with its reason. The voice picker then lists the neural voices from `listVoices()`.
+- Where the files go: `src/neural-package.ts` maps the catalog entry to a `ModelPackage` exactly as
+  upstream's `catalog-to-package.json` pins it (`app_managed`, ref `voices-lab/<id>/<version>`). The
+  engine resolves `app_managed` to Application Support on iOS and `context.filesDir` on Android, and
+  the app reaches both with `Directory.Library`: on iOS under `Application Support/<ref>`, on
+  Android under `<ref>`.
+- The catalog entry is benchmark-only pending legal sign-off. This panel is for device verification,
+  not for shipping those voices.
 
 ## What streams where
 

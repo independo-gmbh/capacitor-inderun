@@ -138,7 +138,8 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
     func testEncodesLifecyclePhase() throws {
         let bridge = IndeRunCapacitorBridge()
         let payload = Payload(
-            text: nil, phase: .providerSelected, finalText: nil, finishReason: nil, outcome: nil,
+            text: nil, phase: .providerSelected, fractionCompleted: nil, providerId: nil, task: nil,
+            finalText: nil, finishReason: nil, outcome: nil, output: nil,
             provenance: nil, runId: nil, schemaVersion: nil, telemetry: nil, usage: nil, error: nil,
             partialText: nil, reason: nil
         )
