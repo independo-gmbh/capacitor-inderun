@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or idea
+    url: https://github.com/independo-gmbh/inderun/discussions
+    about: Ask how to use IndeRun, or share what you are building, in the IndeRun Discussions.
+  - name: Documentation
+    url: https://inderun.dev/docs/getting-started/capacitor
+    about: Capacitor quickstart, routing and privacy rules, and device requirements.
+  - name: Problem in the IndeRun SDKs
+    url: https://github.com/independo-gmbh/inderun/issues
+    about: Routing, provider or error behaviour that also happens without Capacitor belongs in the core repository.
+  - name: Security vulnerability
+    url: https://github.com/independo-gmbh/capacitor-inderun/blob/dev/SECURITY.md
+    about: Please report vulnerabilities privately, not in a public issue.
