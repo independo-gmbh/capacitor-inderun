@@ -1,19 +1,20 @@
-# `@independo/capacitor-inderun`
+<p align="center">
+  <img src="https://inderun.dev/brand/inderun-icon-lilac.svg" width="128" height="128" alt="IndeRun logo" />
+</p>
+<h1 align="center">IndeRun for Capacitor</h1>
+<p align="center"><strong><code>@independo/capacitor-inderun</code></strong></p>
+<p align="center">On-device AI for the devices your users actually have.<br>On-device when available. Cloud only when you allow it.</p>
 
 <p align="center">
   <a href="https://github.com/independo-gmbh/capacitor-inderun/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/independo-gmbh/capacitor-inderun/actions/workflows/ci.yml/badge.svg?branch=main"></a>
-</p>
-
-<p align="center">
   <a href="https://www.npmjs.com/package/@independo/capacitor-inderun"><img src="https://img.shields.io/npm/l/@independo/capacitor-inderun" alt="License Badge: MIT" /></a>
+  <a href="https://inderun.dev/docs/getting-started/capacitor"><img alt="Docs: inderun.dev" src="https://img.shields.io/badge/docs-inderun.dev-A0B3FF"></a>
 <br>
   <a href="https://www.npmjs.com/package/@independo/capacitor-inderun"><img src="https://img.shields.io/npm/dw/@independo/capacitor-inderun" alt="" role="presentation" /></a>
   <a href="https://www.npmjs.com/package/@independo/capacitor-inderun"><img src="https://img.shields.io/npm/v/@independo/capacitor-inderun" alt="" role="presentation" /></a>
 </p>
 
-<p align="center">Built and maintained by <a href="https://www.independo.app/">Independo</a>.</p>
-
-**On-device AI for Capacitor apps. Cloud only when you allow it.**
+<p align="center">Built and maintained by <a href="https://www.independo.app/">Independo</a>. Supported by <a href="https://www.netidee.at/inderun">netidee</a>.</p>
 
 Run a prompt, or speak a sentence, on the device first. IndeRun brings Apple Foundation Models on
 iOS, ML Kit GenAI (Gemini Nano) on Android, your own ONNX models, and system and neural voices
