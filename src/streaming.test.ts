@@ -4,18 +4,18 @@ import { validateStreamEvent } from "@independo/inderun-contracts";
 import type { IndeRunCapacitorPlugin, StreamRun } from "./definitions.js";
 
 const REQUEST: TaskRequest = {
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Hello"
 };
 
 function handleFor(runId: string): StreamRunHandle {
-  return { schemaVersion: "1.0", runId, startedAt: 1_700_000_000_000 };
+  return { schemaVersion: "1.1", runId, startedAt: 1_700_000_000_000 };
 }
 
 function delta(sequence: number, runId = "run_1"): StreamEvent {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     runId,
     sequence,
     timestamp: 1_700_000_000_000 + sequence,
@@ -29,7 +29,7 @@ function terminal(
   outcome: "completed" | "error" | "cancelled" = "completed",
   runId = "run_1"
 ): StreamEvent {
-  const payload: Record<string, unknown> = { schemaVersion: "1.0", runId, outcome };
+  const payload: Record<string, unknown> = { schemaVersion: "1.1", runId, outcome };
   if (outcome === "completed") {
     payload["finalText"] = "done";
     payload["finishReason"] = "stop";
@@ -38,14 +38,14 @@ function terminal(
   } else {
     payload["partialText"] = "part";
     payload["error"] = {
-      schemaVersion: "1.0",
+      schemaVersion: "1.1",
       errorClass: "RateLimited",
       message: "Too many requests."
     };
   }
 
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     runId,
     sequence,
     timestamp: 1_700_000_000_000 + sequence,
@@ -237,7 +237,7 @@ describe("startCapacitorStream", () => {
     const streamId = fake.lastStreamId();
 
     const future: StreamEvent = {
-      schemaVersion: "1.0",
+      schemaVersion: "1.1",
       runId: "run_1",
       sequence: 1,
       timestamp: 1_700_000_000_001,
@@ -281,7 +281,7 @@ describe("startCapacitorStream", () => {
     const collected = collect(run);
     fake.emitEvent(streamId, delta(0));
     fake.emitError(streamId, {
-      schemaVersion: "1.0",
+      schemaVersion: "1.1",
       errorClass: "Internal",
       message: "Native pump failed."
     });
@@ -343,7 +343,7 @@ describe("startCapacitorStream", () => {
     fake.startStream.mockRejectedValue({
       message: "CapacitorException",
       data: {
-        schemaVersion: "1.0",
+        schemaVersion: "1.1",
         errorClass: "CapabilityMismatch",
         message: "No streaming-capable provider."
       }
@@ -358,7 +358,7 @@ describe("startCapacitorStream", () => {
   it("releases its listeners when startStream rejects", async () => {
     const fake = createFakePlugin();
     fake.startStream.mockRejectedValue({
-      data: { schemaVersion: "1.0", errorClass: "Internal", message: "nope" }
+      data: { schemaVersion: "1.1", errorClass: "Internal", message: "nope" }
     });
 
     await expect(startCapacitorStream(fake.plugin, REQUEST)).rejects.toBeDefined();
@@ -467,7 +467,7 @@ describe("startCapacitorStream", () => {
     it("surfaces a cancelStream rejection through the iterable", async () => {
       const fake = createFakePlugin();
       fake.cancelStream.mockRejectedValue({
-        data: { schemaVersion: "1.0", errorClass: "Internal", message: "cancel failed" }
+        data: { schemaVersion: "1.1", errorClass: "Internal", message: "cancel failed" }
       });
       const run = await startCapacitorStream(fake.plugin, REQUEST);
 
@@ -602,7 +602,7 @@ describe("startCapacitorStream", () => {
       // A retained notification replayed for a run that has already gone away.
       fake.emitEvent("stream_does_not_exist", delta(0));
       fake.emitError("stream_does_not_exist", {
-        schemaVersion: "1.0",
+        schemaVersion: "1.1",
         errorClass: "Internal",
         message: "stale"
       });
@@ -622,7 +622,7 @@ describe("startCapacitorPrepare", () => {
 
   function progress(sequence: number, fractionCompleted: number): StreamEvent {
     return {
-      schemaVersion: "1.0",
+      schemaVersion: "1.1",
       runId: "run_1",
       sequence,
       timestamp: 1_700_000_000_000 + sequence,
@@ -674,7 +674,7 @@ describe("startCapacitorPrepare", () => {
   it("unwraps a Capacitor rejection envelope from startPrepare", async () => {
     const fake = createFakePlugin();
     const engineClosed = {
-      schemaVersion: "1.0",
+      schemaVersion: "1.1",
       errorClass: "Unavailable",
       message: "The engine is closed.",
       details: { code: "engine_closed" }

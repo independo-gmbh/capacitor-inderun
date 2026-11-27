@@ -2,7 +2,7 @@ import { createIndeRunCapacitor, type TaskRequest } from "@independo/capacitor-i
 
 const inderun = createIndeRunCapacitor();
 const request: TaskRequest = {
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Hello."
 };

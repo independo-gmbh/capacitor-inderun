@@ -34,7 +34,7 @@ export function normalizePluginError(error: unknown): unknown {
  */
 export function createBridgeError(message: string, runId?: string): IndeRunError {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     errorClass: "Internal",
     message,
     ...(runId !== undefined ? { runId } : {})

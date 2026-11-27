@@ -62,6 +62,11 @@
 - `pnpm verify:web` / `verify:android` / `verify:ios` — platform build verification (`tsc`, Gradle
   `assembleDebug`, `swift build` respectively). Android/iOS verification require the Android
   SDK/NDK and Xcode toolchains locally.
+- Local-artifact mode (opt-in, for pins that name an unreleased IndeRun; steps in `CONTRIBUTING.md`):
+  `INDERUN_LOCAL_TARBALLS=<dir> pnpm install --config.pnpmfile=scripts/inderun-local.pnpmfile.cjs --config.lockfile=false`
+  (then `export pnpm_config_verify_deps_before_run=false`), `pnpm test:android -PinderunLocal`,
+  `INDERUN_LOCAL_PATH=<inderun checkout> pnpm test:ios --skip-update`. Inert unless switched on; never
+  commit what it produces (`file:` specifiers, tarballs, local paths, a local `Package.resolved`).
 
 ## Coding Style & Naming Conventions
 - TypeScript is `strict` with `NodeNext` module resolution (see `tsconfig.json`); source files use

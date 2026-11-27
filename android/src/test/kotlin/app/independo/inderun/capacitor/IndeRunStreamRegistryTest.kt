@@ -15,7 +15,7 @@ class IndeRunStreamRegistryTest {
     private fun run(record: (String?) -> Unit): StreamRun = StreamRun(
         handle = StreamRunHandle(
             runId = "run_1",
-            schemaVersion = SchemaVersion.V1_0,
+            schemaVersion = SchemaVersion.V1_1,
             startedAt = 1_700_000_000_000.0
         ),
         events = emptyFlow(),

@@ -166,7 +166,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
             retryable: nil,
             retryAfterMs: nil,
             runId: "run_1",
-            schemaVersion: .the10
+            schemaVersion: .the11
         )
 
         let encoded = try IndeRunCapacitorBridge().encode(error: error)
@@ -192,12 +192,12 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
             retryable: nil,
             retryAfterMs: nil,
             runId: nil,
-            schemaVersion: .the10
+            schemaVersion: .the11
         )
 
         let encoded = try bridge.encode(error: error)
 
-        XCTAssertEqual(encoded["schemaVersion"] as? String, "1.0")
+        XCTAssertEqual(encoded["schemaVersion"] as? String, "1.1")
         XCTAssertEqual(encoded["errorClass"] as? String, "Unavailable")
         XCTAssertEqual(encoded["message"] as? String, "Not configured.")
         XCTAssertNil(encoded["providerId"])
@@ -217,7 +217,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
             retryable: true,
             retryAfterMs: 2_000,
             runId: "run_abc",
-            schemaVersion: .the10
+            schemaVersion: .the11
         )
 
         let encoded = try bridge.encode(error: error)
@@ -257,7 +257,7 @@ final class IndeRunCapacitorBridgeTests: XCTestCase {
             retryable: nil,
             retryAfterMs: nil,
             runId: nil,
-            schemaVersion: .the10
+            schemaVersion: .the11
         )
 
         let encoded = try bridge.encode(error: error)

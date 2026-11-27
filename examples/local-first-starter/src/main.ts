@@ -52,7 +52,7 @@ async function ask(): Promise<void> {
   answer.textContent = "Running…";
   try {
     const result = await inderun.run({
-      schemaVersion: "1.0",
+      schemaVersion: "1.1",
       task: { kind: "text_to_text" },
       prompt: el<HTMLTextAreaElement>("prompt").value,
       constraints: { privacy: "local_required" }

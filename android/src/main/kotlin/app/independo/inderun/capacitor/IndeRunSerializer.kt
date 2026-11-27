@@ -839,7 +839,7 @@ object IndeRunSerializer {
 
     private fun parseSchemaVersion(value: String): SchemaVersion {
         return when (value) {
-            "1.0" -> SchemaVersion.V1_0
+            "1.1" -> SchemaVersion.V1_1
             else -> throw IllegalArgumentException("Unsupported schemaVersion '$value'.")
         }
     }

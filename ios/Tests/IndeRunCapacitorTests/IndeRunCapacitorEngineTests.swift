@@ -31,6 +31,7 @@ private final class ArtifactFixtureProvider: ProviderAdapter, @unchecked Sendabl
             taskCapabilities: [
                 ProviderTaskCapability(
                     cancel: .hard,
+                    controls: nil,
                     inputs: [.text],
                     interaction: ProviderTaskInteraction(prepare: nil, run: true, stream: false),
                     kind: "text_to_speech",
@@ -65,7 +66,7 @@ private final class ArtifactFixtureProvider: ProviderAdapter, @unchecked Sendabl
             output: TaskOutput(artifact: artifact, playback: nil, preparation: nil, speech: nil, text: nil, type: .artifact),
             provenance: nil,
             runId: context.runId,
-            schemaVersion: .the10,
+            schemaVersion: .the11,
             telemetry: TaskResultTelemetry(errorClass: nil, providerUsed: Self.id, reportedModel: nil, totalMs: 0),
             usage: nil
         )
@@ -93,7 +94,7 @@ private final class EventRecorder: @unchecked Sendable {
 final class IndeRunCapacitorEngineTests: XCTestCase {
 
     private let speechRequest: JSObject = [
-        "schemaVersion": "1.0",
+        "schemaVersion": "1.1",
         "task": ["kind": "text_to_speech"],
         "speech": ["text": "Der Bus kommt.", "locale": "de-AT"],
         "delivery": ["mode": "artifact"]

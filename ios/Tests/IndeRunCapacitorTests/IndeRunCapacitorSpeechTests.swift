@@ -330,9 +330,9 @@ final class IndeRunCapacitorSpeechTests: XCTestCase {
 
     func testDecodesATextToSpeechRequestFromTheCrossSDKVectors() throws {
         // `speak_local_required_with_profile` and `generate_*` from
-        // contracts/fixtures/facade/speech.json (inderun v0.5.0-rc.20), expected requests.
+        // contracts/fixtures/facade/speech.json (core inderun at 99ce979), expected requests.
         let playback: [String: Any] = [
-            "schemaVersion": "1.0",
+            "schemaVersion": "1.1",
             "task": ["kind": "text_to_speech"],
             "speech": [
                 "text": "Hallo",
@@ -364,7 +364,7 @@ final class IndeRunCapacitorSpeechTests: XCTestCase {
         XCTAssertEqual(reencoded, playback as NSDictionary)
 
         let artifact: [String: Any] = [
-            "schemaVersion": "1.0",
+            "schemaVersion": "1.1",
             "task": ["kind": "text_to_speech"],
             "speech": ["text": "Hallo", "locale": "de-DE"],
             "delivery": ["mode": "artifact", "mediaTypes": ["audio/wav"], "destinationRef": "downloads"]

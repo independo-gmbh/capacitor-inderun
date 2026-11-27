@@ -99,14 +99,14 @@ supports 15.0"*.
 
 ## Supported IndeRun Version
 
-This release tracks <!-- version:inderun-version -->**IndeRun 0.5.0**<!-- /version --> on all three platforms:
+This release tracks <!-- version:inderun-version -->**IndeRun 0.6.0**<!-- /version --> on all three platforms:
 
 <!-- version:supported-table -->
 | Platform | Artifact | Constraint |
 |----------|----------|------------|
-| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.5.0` (exact) |
-| iOS      | `inderun` SwiftPM package | `.upToNextMinor(from: "0.5.0")` |
-| Android  | `app.independo.inderun:inderun-*` | `0.5.0` (exact) |
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.6.0` (exact) |
+| iOS      | `inderun` SwiftPM package | `.upToNextMinor(from: "0.6.0")` |
+| Android  | `app.independo.inderun:inderun-*` | `0.6.0` (exact) |
 <!-- /version -->
 
 <!-- version:pin-policy -->
@@ -136,7 +136,7 @@ for (const provider of await inderun.checkCapabilities()) {
 
 try {
   const result = await inderun.run({
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     task: { kind: "text_to_text" },
     prompt: "Summarize why a thin bridge matters.",
     constraints: { privacy: "local_required" }
@@ -337,7 +337,7 @@ const modelPackage: ModelPackage = {
 const inderun = createIndeRunCapacitor({ onnx: { modelPackage } });
 
 const result = await inderun.run({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Summarize why a thin bridge matters.",
   constraints: { privacy: "local_required" }
@@ -380,7 +380,7 @@ const inderun = createIndeRunCapacitor({
 });
 
 const result = await inderun.run({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Summarize why a thin bridge matters.",
   constraints: { privacy: "local_preferred" }
@@ -423,7 +423,7 @@ const inderun = createIndeRunCapacitor({
 });
 
 const result = await inderun.run({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Summarize why a thin bridge matters.",
   constraints: { privacy: "cloud_allowed" },
@@ -449,7 +449,7 @@ import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 const inderun = createIndeRunCapacitor();
 
 const run = await inderun.stream({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Explain routing in two sentences."
 });
@@ -608,7 +608,7 @@ import { createIndeRunCapacitor, type TaskRequest } from "@independo/capacitor-i
 
 const inderun = createIndeRunCapacitor();
 const request: TaskRequest = {
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Hello."
 };

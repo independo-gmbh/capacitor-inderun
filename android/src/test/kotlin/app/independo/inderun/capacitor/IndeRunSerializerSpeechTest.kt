@@ -137,7 +137,7 @@ class IndeRunSerializerSpeechTest {
             JSONObject(
                 """
                 {
-                  "schemaVersion": "1.0",
+                  "schemaVersion": "1.1",
                   "task": { "kind": "text_to_speech" },
                   "speech": {
                     "text": "Servus", "locale": "de-AT", "localeMatch": "exact",
@@ -162,7 +162,7 @@ class IndeRunSerializerSpeechTest {
 
     @Test
     fun `an unknown delivery mode or task kind is refused rather than guessed`() {
-        val base = """{ "schemaVersion": "1.0", "speech": { "text": "Hallo", "locale": "de-DE" }"""
+        val base = """{ "schemaVersion": "1.1", "speech": { "text": "Hallo", "locale": "de-DE" }"""
         assertThrows(IllegalArgumentException::class.java) {
             IndeRunSerializer.parseTaskRequest(
                 JSONObject("""$base, "task": { "kind": "text_to_speech" }, "delivery": { "mode": "broadcast" } }""")
@@ -184,7 +184,7 @@ class IndeRunSerializerSpeechTest {
                     type = TaskOutputType.PLAYBACK
                 ),
                 runId = "run_speak",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 telemetry = TaskResultTelemetry(providerUsed = "android_system_speech", totalMs = 950.0)
             )
         )

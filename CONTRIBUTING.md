@@ -61,6 +61,69 @@ CI runs the same command. `ios/CIProbe` is a CI-only package and is not publishe
 Platform build verification. `verify:android` and `verify:ios` require a configured Android SDK/NDK
 and Xcode toolchain respectively.
 
+### Local-artifact mode (building against an unreleased IndeRun)
+
+A bump to an IndeRun version that is not released yet commits the final pins, so the branch does not
+install or build from the registries until that release exists. Local-artifact mode builds it against
+artifacts you produce from an `inderun` checkout. Each platform switches separately, and nothing changes
+while the switch is off: no committed file names a local path, a tarball or a `file:` specifier, and
+nothing local mode produces is committed.
+
+1. In an `inderun` checkout at the commit you want (a `git worktree` keeps your own checkout clean),
+   stamp the version the bridge pins and build the artifacts. Name the directory `inderun`: SwiftPM
+   derives the package identity from it. The core build needs rustup with the `wasm32-unknown-unknown`
+   target and `wasm-bindgen-cli` (for `pnpm build`), the Android NDK (for `publishToMavenLocal`) and
+   the Xcode command line tools.
+
+    ```shell
+    node scripts/set-version.mjs <version>   # the version package.json pins
+    pnpm install && pnpm build
+    for p in contracts inderun-route-core-wasm inderun-web; do
+      (cd packages/$p && pnpm pack --pack-destination <tarballs>)
+    done
+    (cd android && ./gradlew publishToMavenLocal)
+    ```
+
+    `<tarballs>` is an absolute directory holding exactly one tarball per package, of the version
+    `package.json` pins. The Apple XCFrameworks are committed in `inderun`, so the checkout itself is
+    the Swift package.
+
+2. npm, in this repository:
+
+    ```shell
+    rm -rf node_modules
+    INDERUN_LOCAL_TARBALLS=<tarballs> pnpm install \
+      --config.pnpmfile=scripts/inderun-local.pnpmfile.cjs --config.lockfile=false
+    export pnpm_config_verify_deps_before_run=false
+    ```
+
+    `scripts/inderun-local.pnpmfile.cjs` is a pnpm `readPackage` hook that rewrites the three
+    `@independo/inderun-*` dependencies to the local tarballs while pnpm reads the manifests, so
+    `package.json` stays as committed, and `lockfile=false` keeps the local resolution out of
+    `pnpm-lock.yaml`. pnpm loads the hook only when it is passed like this; it fails when
+    `INDERUN_LOCAL_TARBALLS` is unset or a tarball's version differs from the pin. The export stops
+    `pnpm <script>` from first re-installing against the lockfile, which fails while the pinned version
+    is unpublished. Remove `node_modules` before installing again after rebuilding the tarballs:
+    pnpm reports "Already up to date" and keeps the old ones otherwise.
+
+3. Android: pass `-PinderunLocal`, e.g. `pnpm test:android -PinderunLocal` (or set
+   `ORG_GRADLE_PROJECT_inderunLocal=true`). `android/settings.gradle` then resolves
+   `app.independo.inderun:*` from Maven local only, so a missing local publish fails instead of
+   falling back to Maven Central.
+
+4. iOS: set `INDERUN_LOCAL_PATH` to the checkout and keep SwiftPM off the network,
+   e.g. `INDERUN_LOCAL_PATH=<checkout> pnpm test:ios --skip-update`, and for the plugin sources
+   `cd ios/CIProbe && INDERUN_LOCAL_PATH=<checkout> xcodebuild -scheme Probe -destination 'generic/platform=iOS Simulator' -skipPackageUpdates build`.
+   `Package.swift` then uses `.package(path:)` instead of the released tag. The checkout's own
+   dependencies still come from git: when an upstream is unreachable, seed `.build/repositories` from
+   `~/Library/Caches/org.swift.swiftpm/repositories`. SwiftPM records no path dependency in
+   `Package.resolved` (gitignored anyway); run `swift package resolve` once the release exists.
+
+`pnpm-lock.yaml` cannot name an unpublished version, so such a bump leaves it on the previous release
+(and `pnpm install --frozen-lockfile` fails until it is refreshed). Once the pinned version is published,
+drop the variables and the property, run `rm -rf node_modules && pnpm install`, check that the lockfile's
+importer entry moved too (`pnpm up <pkg>@<version>` if not, see `AGENTS.md`), and commit the lockfile.
+
 ## Scope of Changes
 
 This repository is a thin Capacitor bridge only — it delegates routing, provider logic, and error

@@ -31,7 +31,7 @@ class IndeRunSerializerStreamTest {
     ): StreamEvent = StreamEvent(
         payload = payload,
         runId = runId,
-        schemaVersion = SchemaVersion.V1_0,
+        schemaVersion = SchemaVersion.V1_1,
         sequence = sequence,
         timestamp = 1_700_000_000_000.0,
         type = type
@@ -46,7 +46,7 @@ class IndeRunSerializerStreamTest {
             event(type = "content_delta", payload = Payload(text = "hello"))
         )
 
-        assertEquals("1.0", encoded.getString("schemaVersion"))
+        assertEquals("1.1", encoded.getString("schemaVersion"))
         assertEquals("run_1", encoded.getString("runId"))
         assertEquals(0L, encoded.getLong("sequence"))
         assertEquals("content_delta", encoded.getString("type"))
@@ -61,7 +61,7 @@ class IndeRunSerializerStreamTest {
             finishReason = FinishReason.STOP,
             outcome = Outcome.Completed,
             runId = "run_1",
-            schemaVersion = SchemaVersion.V1_0,
+            schemaVersion = SchemaVersion.V1_1,
             telemetry = PayloadTelemetry(providerUsed = "openai", totalMs = 42.0),
             usage = PayloadUsage(inputTokens = 3, outputTokens = 5, totalTokens = 8)
         )
@@ -86,7 +86,7 @@ class IndeRunSerializerStreamTest {
         val payload = Payload(
             outcome = Outcome.Error,
             runId = "run_1",
-            schemaVersion = SchemaVersion.V1_0,
+            schemaVersion = SchemaVersion.V1_1,
             error = PayloadError(
                 details = mapOf("endpoint" to "https://example.test"),
                 errorClass = IndeRunErrorClass.RateLimited,
@@ -182,7 +182,7 @@ class IndeRunSerializerStreamTest {
             StreamRunHandle(
                 providerId = "openai",
                 runId = "run_1",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 startedAt = 1_700_000_000_000.0
             )
         )
@@ -193,7 +193,7 @@ class IndeRunSerializerStreamTest {
         val withoutProvider = IndeRunSerializer.encodeStreamRunHandle(
             StreamRunHandle(
                 runId = "run_1",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 startedAt = 1_700_000_000_000.0
             )
         )

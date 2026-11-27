@@ -24,7 +24,7 @@ class IndeRunSerializerTest {
             JSONObject(
                 """
                 {
-                  "schemaVersion": "1.0",
+                  "schemaVersion": "1.1",
                   "task": { "kind": "text_to_text" },
                   "prompt": "Hello",
                   "constraints": { "privacy": "cloud_required" }
@@ -58,12 +58,12 @@ class IndeRunSerializerTest {
                 finishReason = FinishReason.STOP,
                 output = TaskOutput(text = "Hi", type = TaskOutputType.TEXT),
                 runId = "run_123",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 telemetry = TaskResultTelemetry(providerUsed = "openai", totalMs = 12.0)
             )
         )
 
-        assertEquals("1.0", encoded.getString("schemaVersion"))
+        assertEquals("1.1", encoded.getString("schemaVersion"))
         assertEquals("stop", encoded.getString("finishReason"))
         assertEquals("Hi", encoded.getJSONObject("output").getString("text"))
         assertEquals("openai", encoded.getJSONObject("telemetry").getString("providerUsed"))
@@ -79,44 +79,51 @@ class IndeRunSerializerTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
+    fun `parseTaskRequest throws on the retired schemaVersion 1_0`() {
+        IndeRunSerializer.parseTaskRequest(
+            JSONObject("""{"schemaVersion":"1.0","task":{"kind":"text_to_text"},"prompt":"Hello"}""")
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
     fun `parseTaskRequest throws on unknown task kind`() {
         IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{"schemaVersion":"1.0","task":{"kind":"image_to_text"},"prompt":"Hello"}""")
+            JSONObject("""{"schemaVersion":"1.1","task":{"kind":"image_to_text"},"prompt":"Hello"}""")
         )
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun `parseTaskRequest throws on unknown cloud constraint`() {
         IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{"schemaVersion":"1.0","task":{"kind":"text_to_text"},"prompt":"Hi","constraints":{"cloud":"maybe"}}""")
+            JSONObject("""{"schemaVersion":"1.1","task":{"kind":"text_to_text"},"prompt":"Hi","constraints":{"cloud":"maybe"}}""")
         )
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun `parseTaskRequest throws on unknown privacy constraint`() {
         IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{"schemaVersion":"1.0","task":{"kind":"text_to_text"},"prompt":"Hi","constraints":{"privacy":"some_value"}}""")
+            JSONObject("""{"schemaVersion":"1.1","task":{"kind":"text_to_text"},"prompt":"Hi","constraints":{"privacy":"some_value"}}""")
         )
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun `parseTaskRequest throws on unknown message role`() {
         IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{"schemaVersion":"1.0","task":{"kind":"text_to_text"},"prompt":"Hi","messages":[{"role":"moderator","content":"Hi"}]}""")
+            JSONObject("""{"schemaVersion":"1.1","task":{"kind":"text_to_text"},"prompt":"Hi","messages":[{"role":"moderator","content":"Hi"}]}""")
         )
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun `parseTaskRequest throws on unknown optimizeFor`() {
         IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{"schemaVersion":"1.0","task":{"kind":"text_to_text"},"prompt":"Hi","preferences":{"optimizeFor":"turbo"}}""")
+            JSONObject("""{"schemaVersion":"1.1","task":{"kind":"text_to_text"},"prompt":"Hi","preferences":{"optimizeFor":"turbo"}}""")
         )
     }
 
     @Test(expected = IllegalArgumentException::class)
     fun `parseTaskRequest throws on unknown telemetry level`() {
         IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{"schemaVersion":"1.0","task":{"kind":"text_to_text"},"prompt":"Hi","telemetry":{"level":"verbose"}}""")
+            JSONObject("""{"schemaVersion":"1.1","task":{"kind":"text_to_text"},"prompt":"Hi","telemetry":{"level":"verbose"}}""")
         )
     }
 
@@ -125,7 +132,7 @@ class IndeRunSerializerTest {
     @Test
     fun `parseTaskRequest accepts minimal request with all optionals absent`() {
         val request = IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{"schemaVersion":"1.0","task":{"kind":"text_to_text"},"prompt":"Hi"}""")
+            JSONObject("""{"schemaVersion":"1.1","task":{"kind":"text_to_text"},"prompt":"Hi"}""")
         )
         assertNull(request.authContextRef)
         assertNull(request.constraints)
@@ -184,7 +191,7 @@ class IndeRunSerializerTest {
                 message = "Not configured."
             )
         )
-        assertEquals("1.0", encoded.getString("schemaVersion"))
+        assertEquals("1.1", encoded.getString("schemaVersion"))
         assertEquals("Unavailable", encoded.getString("errorClass"))
         assertEquals("Not configured.", encoded.getString("message"))
         assertFalse(encoded.has("providerId"))
