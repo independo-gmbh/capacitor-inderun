@@ -47,7 +47,7 @@ final class IndeRunCapacitorStreamPumpTests: XCTestCase {
         StreamEvent(
             payload: .content(text: "chunk\(sequence)"),
             runId: "run_1",
-            schemaVersion: .the10,
+            schemaVersion: .the11,
             sequence: sequence,
             timestamp: 1_700_000_000_000,
             type: type
@@ -62,7 +62,7 @@ final class IndeRunCapacitorStreamPumpTests: XCTestCase {
                     )
             ),
             runId: "run_1",
-            schemaVersion: .the10,
+            schemaVersion: .the11,
             sequence: sequence,
             timestamp: 1_700_000_000_000,
             type: "terminal"
@@ -79,7 +79,7 @@ final class IndeRunCapacitorStreamPumpTests: XCTestCase {
             handle: StreamRunHandle(
                 providerId: nil,
                 runId: "run_1",
-                schemaVersion: .the10,
+                schemaVersion: .the11,
                 startedAt: 1_700_000_000_000
             ),
             events: events,
@@ -159,7 +159,7 @@ final class IndeRunCapacitorStreamPumpTests: XCTestCase {
                     )
                     ),
                     runId: "run_1",
-                    schemaVersion: .the10,
+                    schemaVersion: .the11,
                     sequence: 1,
                     timestamp: 1_700_000_000_000,
                     type: "terminal"

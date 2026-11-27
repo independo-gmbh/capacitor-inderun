@@ -16,6 +16,16 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        // Local-artifact mode (CONTRIBUTING.md, for building against an unreleased SDK):
+        // -PinderunLocal resolves app.independo.inderun:* from Maven local, and only from
+        // there, so a stale or missing local publish fails instead of mixing in Maven Central.
+        // Without the property this block is inert.
+        if (providers.gradleProperty("inderunLocal").isPresent()) {
+            exclusiveContent {
+                forRepository { mavenLocal() }
+                filter { includeGroup("app.independo.inderun") }
+            }
+        }
         google()
         mavenCentral()
     }
@@ -25,4 +35,5 @@ rootProject.name = "inderun-capacitor"
 
 // The IndeRun Android SDK modules are consumed as released Maven Central
 // artifacts (app.independo.inderun:inderun-*); see build.gradle.kts. No
-// composite/local module includes — this is a standalone Gradle build.
+// composite/local module includes — this is a standalone Gradle build (the
+// opt-in -PinderunLocal above swaps the repository, not the build).

@@ -3,7 +3,7 @@ import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 const inderun = createIndeRunCapacitor();
 
 const run = await inderun.stream({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Explain routing in two sentences."
 });

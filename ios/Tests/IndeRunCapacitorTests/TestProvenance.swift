@@ -13,6 +13,6 @@ func sampleProvenance(providerId: String = "openai:gpt-5.2") -> ExecutionProvena
         providerId: providerId,
         reportedModel: nil,
         routeRejections: [],
-        schemaVersion: .the10
+        schemaVersion: .the11
     )
 }

@@ -99,14 +99,14 @@ supports 15.0"*.
 
 ## Supported IndeRun Version
 
-This release tracks <!-- version:inderun-version -->**IndeRun 0.5.0**<!-- /version --> on all three platforms:
+This release tracks <!-- version:inderun-version -->**IndeRun 0.6.0**<!-- /version --> on all three platforms:
 
 <!-- version:supported-table -->
 | Platform | Artifact | Constraint |
 |----------|----------|------------|
-| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.5.0` (exact) |
-| iOS      | `inderun` SwiftPM package | `.upToNextMinor(from: "0.5.0")` |
-| Android  | `app.independo.inderun:inderun-*` | `0.5.0` (exact) |
+| Web      | `@independo/inderun-web`, `@independo/inderun-contracts` | `0.6.0` (exact) |
+| iOS      | `inderun` SwiftPM package | `.upToNextMinor(from: "0.6.0")` |
+| Android  | `app.independo.inderun:inderun-*` | `0.6.0` (exact) |
 <!-- /version -->
 
 <!-- version:pin-policy -->
@@ -136,7 +136,7 @@ for (const provider of await inderun.checkCapabilities()) {
 
 try {
   const result = await inderun.run({
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     task: { kind: "text_to_text" },
     prompt: "Summarize why a thin bridge matters.",
     constraints: { privacy: "local_required" }
@@ -249,6 +249,46 @@ try {
 underneath and cannot be cancelled. Both go through the same routing as text, so `execution`
 accepts the same `privacy`, `cloud` and `timeoutMs` constraints.
 
+### Speech controls
+
+`speak()` and `generateSpeech()` take relative `controls.speakingRate` and `controls.pitch` (`1` is the voice's
+normal setting). `speak()` also takes `playback.volume` (0 to 1), which attenuates that utterance only and never the
+device volume; `generateSpeech()` takes no volume, because an artifact is not played. Each control is
+`{ value, requirement }`, and `requirement` defaults to `"preferred"`. A `"required"` control fails the run before any
+audio when no provider can apply it. A `"preferred"` control never rejects a provider.
+
+<!-- snippet:speech-controls -->
+```ts
+import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
+
+const inderun = createIndeRunCapacitor({ systemSpeech: true });
+
+// Rate and pitch are relative: 1 is the voice's normal setting. Volume (0 to 1) only
+// attenuates this utterance, never the device volume, so only `speak()` takes it.
+const playback = await inderun.speak({
+  text: "Der Bus kommt.",
+  locale: "de-AT",
+  controls: {
+    speakingRate: { value: 0.8, requirement: "required" },
+    pitch: { value: 1.1, requirement: "preferred" }
+  },
+  playback: { volume: { value: 0.5 } },
+  execution: { privacy: "local_required" }
+});
+
+// `output.speech.controls` says what each requested control did.
+const spoken = await playback.result;
+for (const control of spoken.speech?.controls ?? []) {
+  console.log(control.id, control.status, control.effective, control.reason);
+}
+```
+<!-- /snippet -->
+
+The result lists every requested control in `speech.controls`, with `status` `"applied"` (`effective` is present when
+the platform reports it) or `"not_applied"` (and a `reason`). Controls need IndeRun 0.6 (contract 1.1), which the bridge
+now requires on all three platforms. The neural speech family declares no controls, so a `"required"` control routes to
+a system voice or is refused. On-device behavior is not yet confirmed by a device smoke run.
+
 ### Neural voices
 
 A neural voice is a developer-supplied model package. The plugin downloads nothing on its own.
@@ -337,7 +377,7 @@ const modelPackage: ModelPackage = {
 const inderun = createIndeRunCapacitor({ onnx: { modelPackage } });
 
 const result = await inderun.run({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Summarize why a thin bridge matters.",
   constraints: { privacy: "local_required" }
@@ -380,7 +420,7 @@ const inderun = createIndeRunCapacitor({
 });
 
 const result = await inderun.run({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Summarize why a thin bridge matters.",
   constraints: { privacy: "local_preferred" }
@@ -423,7 +463,7 @@ const inderun = createIndeRunCapacitor({
 });
 
 const result = await inderun.run({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Summarize why a thin bridge matters.",
   constraints: { privacy: "cloud_allowed" },
@@ -449,7 +489,7 @@ import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
 const inderun = createIndeRunCapacitor();
 
 const run = await inderun.stream({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Explain routing in two sentences."
 });
@@ -608,7 +648,7 @@ import { createIndeRunCapacitor, type TaskRequest } from "@independo/capacitor-i
 
 const inderun = createIndeRunCapacitor();
 const request: TaskRequest = {
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Hello."
 };

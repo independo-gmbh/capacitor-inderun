@@ -150,6 +150,12 @@ not reload the neural model.
   network. *Speak* and *Stop* play and cancel. *Generate WAV* calls `generateSpeech()`, reads every
   byte with `readArtifact()`, prints the byte count and the sample rate from the WAV header, and
   disposes the artifact. (The browser's system speech cannot generate, so that is refused there.)
+- **Speech controls** (device smoke, not yet run): *Speak with controls* sends a required speaking rate
+  (0.8), a preferred pitch (1.1) and a playback volume (0.5); *Generate WAV with rate* sends a required rate
+  (0.8) and no volume, because an artifact has none. On iOS and Android, check the printed `controls` line:
+  each entry has `status` `applied` (with `effective`) or `not_applied` (with a `reason`), and a
+  `required` control that no provider can apply refuses the run before any audio, while a provider that
+  reports it not applied at run time fails the run. Needs IndeRun 0.6 (contract 1.1).
 - **Neural voice** (native only): *Download Articulino* fetches the `articulino-de-en-int8` entry of
   upstream's neural model catalog (about 95 MB, `src/neural-catalog.json`) with
   `@capacitor/filesystem`, skipping files whose size already matches. *Prepare* reconfigures with

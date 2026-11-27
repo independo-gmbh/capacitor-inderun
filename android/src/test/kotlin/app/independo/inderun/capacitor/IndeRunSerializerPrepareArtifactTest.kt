@@ -174,7 +174,7 @@ class IndeRunSerializerPrepareArtifactTest {
             StreamEvent(
                 payload = Payload(providerId = "local.speech", task = "text_to_speech", fractionCompleted = 0.5),
                 runId = "prepare_1",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 sequence = 0,
                 timestamp = 1_700_000_000_000.0,
                 type = "preparation_progress"
@@ -213,10 +213,10 @@ class IndeRunSerializerPrepareArtifactTest {
                         type = TaskOutputType.PREPARED
                     ),
                     runId = "prepare_1",
-                    schemaVersion = SchemaVersion.V1_0
+                    schemaVersion = SchemaVersion.V1_1
                 ),
                 runId = "prepare_1",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 sequence = 1,
                 timestamp = 1_700_000_000_001.0,
                 type = "terminal"

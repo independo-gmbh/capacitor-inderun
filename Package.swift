@@ -6,6 +6,24 @@ import PackageDescription
 // URL + git tag. The IndeRun Swift SDK is consumed as a released dependency from
 // the main monorepo (github.com/independo-gmbh/inderun, tag vX.Y.Z).
 
+// Ranged rather than `exact:` so a consumer that also depends on `inderun`
+// directly can unify the graph. `.upToNextMinor` rather than `from:` because
+// `from:` on a 0.x means `<1.0.0` — it would let SwiftPM float across a minor
+// (where an 0.x SDK's breaking changes live) while package.json and
+// android/build.gradle.kts stay pinned, which is exactly the three-platform
+// drift the versioning policy forbids. Both operators exclude prereleases:
+// tracking a `-dev.N` again requires going back to `exact:`.
+//
+// Local-artifact mode (CONTRIBUTING.md, for building against an unreleased SDK): with
+// INDERUN_LOCAL_PATH set to an inderun checkout, IndeRun resolves from that directory
+// instead. Unset or empty, this is the released dependency and nothing else changes.
+let inderunDependency: Package.Dependency = {
+    if let localPath = Context.environment["INDERUN_LOCAL_PATH"], !localPath.isEmpty {
+        return .package(path: localPath)
+    }
+    return .package(url: "https://github.com/independo-gmbh/inderun.git", .upToNextMinor(from: "0.6.0"))
+}()
+
 let package = Package(
     name: "IndeRunCapacitor",
     platforms: [
@@ -30,14 +48,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
-        // Ranged rather than `exact:` so a consumer that also depends on `inderun`
-        // directly can unify the graph. `.upToNextMinor` rather than `from:` because
-        // `from:` on a 0.x means `<1.0.0` — it would let SwiftPM float across a minor
-        // (where an 0.x SDK's breaking changes live) while package.json and
-        // android/build.gradle.kts stay pinned, which is exactly the three-platform
-        // drift the versioning policy forbids. Both operators exclude prereleases:
-        // tracking a `-dev.N` again requires going back to `exact:`.
-        .package(url: "https://github.com/independo-gmbh/inderun.git", .upToNextMinor(from: "0.5.0"))
+        inderunDependency
     ],
     targets: [
         .target(

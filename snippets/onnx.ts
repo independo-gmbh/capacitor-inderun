@@ -10,7 +10,7 @@ const modelPackage: ModelPackage = {
 const inderun = createIndeRunCapacitor({ onnx: { modelPackage } });
 
 const result = await inderun.run({
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   task: { kind: "text_to_text" },
   prompt: "Summarize why a thin bridge matters.",
   constraints: { privacy: "local_required" }

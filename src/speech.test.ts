@@ -46,7 +46,7 @@ vi.mock("@capacitor/core", () => ({
 }));
 
 const HANDLE: StreamRunHandle = {
-  schemaVersion: "1.0",
+  schemaVersion: "1.1",
   runId: "run_speak",
   startedAt: 1_700_000_000_000,
   providerId: "apple_system_speech"
@@ -70,18 +70,18 @@ function emit(streamId: string, event: StreamEvent): void {
 
 function terminal(payload: Record<string, unknown>, sequence = 1): StreamEvent {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     runId: HANDLE.runId,
     sequence,
     timestamp: 1_700_000_000_000 + sequence,
     type: "terminal",
-    payload: { schemaVersion: "1.0", runId: HANDLE.runId, ...payload }
+    payload: { schemaVersion: "1.1", runId: HANDLE.runId, ...payload }
   };
 }
 
 function started(): StreamEvent {
   return {
-    schemaVersion: "1.0",
+    schemaVersion: "1.1",
     runId: HANDLE.runId,
     sequence: 0,
     timestamp: 1_700_000_000_000,
@@ -123,7 +123,7 @@ describe("speech through the bridge", () => {
       expect(nativePlugin.startStream).toHaveBeenCalledOnce();
       expect(nativePlugin.startStream.mock.calls[0][0]).toMatchObject({
         request: {
-          schemaVersion: "1.0",
+          schemaVersion: "1.1",
           task: { kind: "text_to_speech" },
           speech: { text: "Der Bus kommt.", locale: "de-AT" },
           delivery: { mode: "playback" }
@@ -186,7 +186,7 @@ describe("speech through the bridge", () => {
         terminal({
           outcome: "error",
           partialText: "",
-          error: { schemaVersion: "1.0", errorClass: "Unavailable", message: "No voice." }
+          error: { schemaVersion: "1.1", errorClass: "Unavailable", message: "No voice." }
         })
       );
 
@@ -199,7 +199,7 @@ describe("speech through the bridge", () => {
 
     it("rejects with the normalized contract error when routing refuses the stream", async () => {
       const refusal: IndeRunError = {
-        schemaVersion: "1.0",
+        schemaVersion: "1.1",
         errorClass: "CapabilityMismatch",
         message: "No provider can speak de-AT."
       };
@@ -215,7 +215,7 @@ describe("speech through the bridge", () => {
   describe("generateSpeech", () => {
     it("runs one artifact request and returns the facade's result, readable through readArtifact", async () => {
       const taskResult: TaskResult = {
-        schemaVersion: "1.0",
+        schemaVersion: "1.1",
         runId: "run_generate",
         finishReason: "stop",
         output: {
@@ -245,7 +245,7 @@ describe("speech through the bridge", () => {
 
       expect(nativePlugin.configure).toHaveBeenCalledOnce();
       expect(nativePlugin.run).toHaveBeenCalledWith({
-        schemaVersion: "1.0",
+        schemaVersion: "1.1",
         task: { kind: "text_to_speech" },
         speech: { text: "Hallo", locale: "de-DE" },
         delivery: { mode: "artifact", mediaTypes: ["audio/wav"] }
@@ -265,7 +265,7 @@ describe("speech through the bridge", () => {
 
     it("rejects with the normalized contract error the native run rejected with", async () => {
       const refusal: IndeRunError = {
-        schemaVersion: "1.0",
+        schemaVersion: "1.1",
         errorClass: "CapabilityMismatch",
         message: "No provider writes audio/ogg."
       };

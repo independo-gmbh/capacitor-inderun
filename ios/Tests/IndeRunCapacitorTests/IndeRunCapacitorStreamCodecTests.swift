@@ -18,7 +18,7 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
         StreamEvent(
             payload: payload,
             runId: runId,
-            schemaVersion: .the10,
+            schemaVersion: .the11,
             sequence: sequence,
             timestamp: 1_700_000_000_000,
             type: type
@@ -31,7 +31,7 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
             streamEvent: event(type: "content_delta", payload: .content(text: "hello"))
         )
 
-        XCTAssertEqual(encoded["schemaVersion"] as? String, "1.0")
+        XCTAssertEqual(encoded["schemaVersion"] as? String, "1.1")
         XCTAssertEqual(encoded["runId"] as? String, "run_1")
         XCTAssertEqual(encoded["sequence"] as? Int, 0)
         XCTAssertEqual(encoded["type"] as? String, "content_delta")
@@ -83,7 +83,7 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
             retryable: true,
             retryAfterMs: 2_000,
             runId: "run_1",
-            schemaVersion: .the10
+            schemaVersion: .the11
         )
         let outcome = StreamTerminalOutcome.failed(
             runId: "run_1", error: error, partialText: "half ", provenance: sampleProvenance()
@@ -167,7 +167,7 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
             handle: StreamRunHandle(
                 providerId: "openai",
                 runId: "run_1",
-                schemaVersion: .the10,
+                schemaVersion: .the11,
                 startedAt: 1_700_000_000_000
             )
         )
@@ -179,7 +179,7 @@ final class IndeRunCapacitorStreamCodecTests: XCTestCase {
             handle: StreamRunHandle(
                 providerId: nil,
                 runId: "run_1",
-                schemaVersion: .the10,
+                schemaVersion: .the11,
                 startedAt: 1_700_000_000_000
             )
         )

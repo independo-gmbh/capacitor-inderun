@@ -108,10 +108,7 @@ class IndeRunCapacitorPlugin : Plugin() {
 
         scope.launch {
             try {
-                val engine = requireEngine("run(request)")
-                val request = IndeRunSerializer.parseTaskRequest(requestJson)
-                val result = engine.run(request)
-                call.resolve(IndeRunSerializer.encodeTaskResult(result))
+                call.resolve(TaskRequestEntry.run(requireEngine("run(request)"), requestJson))
             } catch (error: IndeRunException) {
                 val contractError = error.toContractError()
                 call.reject(
@@ -178,7 +175,7 @@ class IndeRunCapacitorPlugin : Plugin() {
     @PluginMethod
     fun startStream(call: PluginCall) {
         startBridgedRun(call, "startStream", "stream(request)") { engine, requestJson ->
-            engine.stream(IndeRunSerializer.parseTaskRequest(requestJson))
+            TaskRequestEntry.stream(engine, requestJson)
         }
     }
 

@@ -13,6 +13,7 @@ import type {
   StreamRun
 } from "./definitions.js";
 import { createBridgeError, normalizePluginError } from "./errors.js";
+import { assertValidTaskRequest } from "./validation.js";
 
 /**
  * Listener event names. These are **public contract**: an app may attach its own
@@ -295,10 +296,12 @@ const dispatcher = new StreamDispatcher();
  * The listeners are registered *before* `startStream` is called, so no event can be
  * emitted for a run whose sink does not exist yet.
  */
-export function startCapacitorStream(
+export async function startCapacitorStream(
   plugin: IndeRunCapacitorPlugin,
   request: TaskRequest
 ): Promise<StreamRun> {
+  // Before the listeners are bound: a refused request leaves nothing behind.
+  assertValidTaskRequest(request);
   return startBridgedRun(plugin, (streamId) => plugin.startStream({ streamId, request }));
 }
 

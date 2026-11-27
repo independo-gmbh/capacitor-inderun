@@ -38,7 +38,7 @@ final class IndeRunCapacitorStreamRegistryTests: XCTestCase {
             handle: StreamRunHandle(
                 providerId: nil,
                 runId: "run_1",
-                schemaVersion: .the10,
+                schemaVersion: .the11,
                 startedAt: 1_700_000_000_000
             ),
             events: events,

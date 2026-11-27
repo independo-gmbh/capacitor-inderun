@@ -61,7 +61,7 @@ class IndeRunSerializerProvenanceTest {
     )
 
     private fun assertProvenance(encoded: JSONObject) {
-        assertEquals("1.0", encoded.getString("schemaVersion"))
+        assertEquals("1.1", encoded.getString("schemaVersion"))
         assertEquals("smart", encoded.getString("modelProfile"))
         assertEquals("openai:gpt-5.2", encoded.getString("providerId"))
         assertEquals("cloud", encoded.getString("locality"))
@@ -86,7 +86,7 @@ class IndeRunSerializerProvenanceTest {
     @Test
     fun `parseTaskRequest reads modelProfile`() {
         val request = IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{ "schemaVersion": "1.0", "task": { "kind": "text_to_text" }, "prompt": "Hi", "modelProfile": "smart" }""")
+            JSONObject("""{ "schemaVersion": "1.1", "task": { "kind": "text_to_text" }, "prompt": "Hi", "modelProfile": "smart" }""")
         )
         assertEquals("smart", request.modelProfile)
     }
@@ -94,7 +94,7 @@ class IndeRunSerializerProvenanceTest {
     @Test
     fun `parseTaskRequest leaves an absent modelProfile null`() {
         val request = IndeRunSerializer.parseTaskRequest(
-            JSONObject("""{ "schemaVersion": "1.0", "task": { "kind": "text_to_text" }, "prompt": "Hi" }""")
+            JSONObject("""{ "schemaVersion": "1.1", "task": { "kind": "text_to_text" }, "prompt": "Hi" }""")
         )
         assertNull(request.modelProfile)
     }
@@ -130,7 +130,7 @@ class IndeRunSerializerProvenanceTest {
                 output = TaskOutput(text = "Hi", type = TaskOutputType.TEXT),
                 provenance = provenance,
                 runId = "run_1",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 telemetry = TaskResultTelemetry(providerUsed = "openai:gpt-5.2", totalMs = 12.0)
             )
         )
@@ -144,7 +144,7 @@ class IndeRunSerializerProvenanceTest {
                 finishReason = FinishReason.STOP,
                 output = TaskOutput(text = "Hi", type = TaskOutputType.TEXT),
                 runId = "run_1",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 telemetry = TaskResultTelemetry(providerUsed = "openai:gpt-5.2", totalMs = 12.0)
             )
         )
@@ -166,7 +166,7 @@ class IndeRunSerializerProvenanceTest {
                 payload = Payload(
                     outcome = Outcome.Error,
                     runId = "run_1",
-                    schemaVersion = SchemaVersion.V1_0,
+                    schemaVersion = SchemaVersion.V1_1,
                     partialText = "half ",
                     provenance = provenance,
                     error = PayloadError(
@@ -176,7 +176,7 @@ class IndeRunSerializerProvenanceTest {
                     )
                 ),
                 runId = "run_1",
-                schemaVersion = SchemaVersion.V1_0,
+                schemaVersion = SchemaVersion.V1_1,
                 sequence = 3,
                 timestamp = 1_700_000_000_000.0,
                 type = "terminal"

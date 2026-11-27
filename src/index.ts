@@ -47,6 +47,7 @@ import type {
 import { decodeArtifactChunk } from "./artifacts.js";
 import { normalizePluginError } from "./errors.js";
 import { startCapacitorPrepare, startCapacitorStream } from "./streaming.js";
+import { assertValidTaskRequest } from "./validation.js";
 
 /**
  * The web SDK's speech facade, loaded on first use. A static import of the package root would
@@ -118,6 +119,8 @@ export const IndeRunCapacitor: IndeRunCapacitorApi = {
   },
 
   async run(request: TaskRequest): Promise<TaskResult> {
+    // Raw JSON, before any native decode that could drop a field (see validation.ts).
+    assertValidTaskRequest(request);
     try {
       return await IndeRunCapacitorNative.run(request);
     } catch (error) {
@@ -135,6 +138,7 @@ export const IndeRunCapacitor: IndeRunCapacitorApi = {
   },
 
   async startStream(options: StartStreamOptions): Promise<StreamRunHandle> {
+    assertValidTaskRequest(options?.request);
     try {
       return await IndeRunCapacitorNative.startStream(options);
     } catch (error) {
@@ -333,7 +337,7 @@ type _CapacitorIsIndeRunApi = AssertIndeRunApi<IndeRunCapacitorApi>;
  *
  * // `local_required` never leaves the device; it is refused when no local provider can serve it.
  * const result = await inderun.run({
- *   schemaVersion: "1.0",
+ *   schemaVersion: "1.1",
  *   task: { kind: "text_to_text" },
  *   prompt: "Summarize why a thin bridge matters.",
  *   constraints: { privacy: "local_required" }
