@@ -32,6 +32,8 @@ const ui = {
   sysList: el<HTMLButtonElement>("sys-list"),
   sysSpeak: el<HTMLButtonElement>("sys-speak"),
   sysGenerate: el<HTMLButtonElement>("sys-generate"),
+  sysSpeakControls: el<HTMLButtonElement>("sys-speak-controls"),
+  sysGenerateControls: el<HTMLButtonElement>("sys-generate-controls"),
   sysStatus: el<HTMLParagraphElement>("sys-status"),
   download: el<HTMLButtonElement>("neural-download"),
   prepare: el<HTMLButtonElement>("neural-prepare"),
@@ -115,6 +117,8 @@ function setBusy(busy: boolean): void {
     ui.sysList,
     ui.sysSpeak,
     ui.sysGenerate,
+    ui.sysSpeakControls,
+    ui.sysGenerateControls,
     ui.download,
     ui.prepare,
     ui.neuralSpeak,
@@ -146,6 +150,7 @@ async function doSpeak(label: string, extra: Record<string, unknown>): Promise<v
       `finishReason: ${spoken.finishReason ?? "(none)"}`,
       `provider: ${spoken.provenance?.providerId ?? "(unknown)"} (${spoken.provenance?.locality ?? "?"})`,
       `voice: ${JSON.stringify(spoken.speech ?? null)}`,
+      `controls: ${JSON.stringify(spoken.speech?.controls ?? [])}`,
       `timing: ${JSON.stringify(spoken.timing ?? null)}`
     ]);
   } catch (error) {
@@ -176,6 +181,7 @@ async function doGenerate(label: string, extra: Record<string, unknown>): Promis
         `media type: ${generated.artifact.mediaType}`,
         `provider: ${generated.provenance?.providerId ?? "(unknown)"} (${generated.provenance?.locality ?? "?"})`,
         `voice: ${JSON.stringify(generated.speech ?? null)}`,
+        `controls: ${JSON.stringify(generated.speech?.controls ?? [])}`,
         "artifact disposed after reading."
       ]);
     } finally {
@@ -218,6 +224,25 @@ ui.sysSpeak.addEventListener("click", () => {
 ui.sysGenerate.addEventListener("click", () => {
   configureSystemOnlyUnlessNeural();
   void doGenerate("System generateSpeech", {});
+});
+
+// Device smoke for speech controls (contract 1.1): check `controls` in the printed result.
+ui.sysSpeakControls.addEventListener("click", () => {
+  configureSystemOnlyUnlessNeural();
+  void doSpeak("System speak with controls", {
+    controls: {
+      speakingRate: { value: 0.8, requirement: "required" },
+      pitch: { value: 1.1, requirement: "preferred" }
+    },
+    playback: { volume: { value: 0.5 } }
+  });
+});
+
+ui.sysGenerateControls.addEventListener("click", () => {
+  configureSystemOnlyUnlessNeural();
+  void doGenerate("System generateSpeech with rate", {
+    controls: { speakingRate: { value: 0.8, requirement: "required" } }
+  });
 });
 
 // ---------------------------------------------------------------- neural voice

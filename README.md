@@ -249,6 +249,46 @@ try {
 underneath and cannot be cancelled. Both go through the same routing as text, so `execution`
 accepts the same `privacy`, `cloud` and `timeoutMs` constraints.
 
+### Speech controls
+
+`speak()` and `generateSpeech()` take relative `controls.speakingRate` and `controls.pitch` (`1` is the voice's
+normal setting). `speak()` also takes `playback.volume` (0 to 1), which attenuates that utterance only and never the
+device volume; `generateSpeech()` takes no volume, because an artifact is not played. Each control is
+`{ value, requirement }`, and `requirement` defaults to `"preferred"`. A `"required"` control fails the run before any
+audio when no provider can apply it. A `"preferred"` control never rejects a provider.
+
+<!-- snippet:speech-controls -->
+```ts
+import { createIndeRunCapacitor } from "@independo/capacitor-inderun";
+
+const inderun = createIndeRunCapacitor({ systemSpeech: true });
+
+// Rate and pitch are relative: 1 is the voice's normal setting. Volume (0 to 1) only
+// attenuates this utterance, never the device volume, so only `speak()` takes it.
+const playback = await inderun.speak({
+  text: "Der Bus kommt.",
+  locale: "de-AT",
+  controls: {
+    speakingRate: { value: 0.8, requirement: "required" },
+    pitch: { value: 1.1, requirement: "preferred" }
+  },
+  playback: { volume: { value: 0.5 } },
+  execution: { privacy: "local_required" }
+});
+
+// `output.speech.controls` says what each requested control did.
+const spoken = await playback.result;
+for (const control of spoken.speech?.controls ?? []) {
+  console.log(control.id, control.status, control.effective, control.reason);
+}
+```
+<!-- /snippet -->
+
+The result lists every requested control in `speech.controls`, with `status` `"applied"` (`effective` is present when
+the platform reports it) or `"not_applied"` (and a `reason`). Controls need IndeRun 0.6 (contract 1.1), which the bridge
+now requires on all three platforms. The neural speech family declares no controls, so a `"required"` control routes to
+a system voice or is refused. On-device behavior is not yet confirmed by a device smoke run.
+
 ### Neural voices
 
 A neural voice is a developer-supplied model package. The plugin downloads nothing on its own.
