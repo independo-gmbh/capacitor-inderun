@@ -28,10 +28,15 @@
   `android/src/main/`, with `IndeRunStreamRegistry.kt` tracking live streaming runs) and
   `ios/Sources/IndeRunCapacitorPlugin/` (`IndeRunCapacitorPlugin.swift` is the Capacitor plugin
   surface, `IndeRunCapacitorBridge.swift` bridges to the native IndeRun Swift package,
-  `IndeRunCapacitorStreamRegistry.swift` is the iOS counterpart of the Kotlin registry). The SwiftPM
+  `IndeRunCapacitorStreamRegistry.swift` is the iOS counterpart of the Kotlin registry). Raw request
+  validation runs before decoding: `TaskRequestEntry.kt` in
+  `android/src/main/kotlin/app/independo/inderun/capacitor/` (the Kotlin entry point, used by
+  `IndeRunSerializer.kt`) and `decodeTaskRequest` in `IndeRunCapacitorBridge.swift`. The SwiftPM
   manifest is `Package.swift`.
 - Tests: `src/*.test.ts` (Vitest), `android/src/test/` (JVM unit tests), `ios/Tests/` (Swift
   Testing/XCTest). Build output goes to `dist/` — do not edit or commit it.
+- `test-fixtures/` holds contract fixtures vendored from the inderun repo (one copy, provenance in its README),
+  shared by the Vitest conformance test and the Android and iOS tests. Not published.
 - `example-app/` is an unpublished Capacitor app for device smoke-testing streaming. It is excluded
   from the npm package by the `files` allowlist, from SwiftPM by the explicit target paths, and from
   CI because every job is root-scoped. Do **not** add it to `pnpm-workspace.yaml`: that file has no

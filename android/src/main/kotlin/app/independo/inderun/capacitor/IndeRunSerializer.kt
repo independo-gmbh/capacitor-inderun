@@ -30,6 +30,7 @@ import app.independo.inderun.contracts.PayloadError
 import app.independo.inderun.contracts.PayloadTelemetry
 import app.independo.inderun.contracts.PayloadUsage
 import app.independo.inderun.contracts.Phase
+import app.independo.inderun.contracts.PlaybackControls
 import app.independo.inderun.contracts.PlaybackOutput
 import app.independo.inderun.contracts.PreparationItem
 import app.independo.inderun.contracts.PrepareRequest
@@ -42,10 +43,16 @@ import app.independo.inderun.contracts.ProviderPrivacy
 import app.independo.inderun.contracts.ProviderTaskAvailability
 import app.independo.inderun.contracts.ProviderTaskCapability
 import app.independo.inderun.contracts.ProviderVoice
+import app.independo.inderun.contracts.RequestedNumber
+import app.independo.inderun.contracts.RequestedUnitNumber
 import app.independo.inderun.contracts.RequirementLevel
 import app.independo.inderun.contracts.SchemaVersion
+import app.independo.inderun.contracts.SharedSynthesisControls
 import app.independo.inderun.contracts.Source
 import app.independo.inderun.contracts.SourceType
+import app.independo.inderun.contracts.SpeechControlDeclaration
+import app.independo.inderun.contracts.SpeechControlOutcome
+import app.independo.inderun.contracts.SpeechControlState
 import app.independo.inderun.contracts.SpeechFrontend
 import app.independo.inderun.contracts.SpeechInput
 import app.independo.inderun.contracts.SpeechModelPackage
@@ -68,6 +75,7 @@ import app.independo.inderun.contracts.VoiceGender
 import app.independo.inderun.contracts.Runtime as ModelPackageRuntime
 import app.independo.inderun.core.ArtifactChunk
 import app.independo.inderun.core.createInternal
+import app.independo.inderun.core.rawTaskRequestIssues
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import org.json.JSONArray
@@ -244,7 +252,25 @@ object IndeRunSerializer {
         return AssetLicense(spdx = json.optStringOrNull("spdx"), url = json.optStringOrNull("url"))
     }
 
+    /**
+     * A JSON request from JS, as the contract type the engine takes.
+     *
+     * The raw check comes first: this parser reads only the keys it knows, so a field the Kotlin
+     * contract cannot express (an unknown or misspelled speech control, a requested number with an
+     * extra key, another schema version) would otherwise vanish here and never reach validation.
+     * [rawTaskRequestIssues] is the core's own check for exactly that (ADR 025); any issue refuses
+     * the request with the normalized validation error the engine uses, `Internal` with
+     * `details.validationIssues`. Everything it does not cover, such as a playback control on an
+     * artifact request, is parsed faithfully and left to the engine's request validation.
+     */
     fun parseTaskRequest(json: JSONObject): TaskRequest {
+        val issues = rawTaskRequestIssues(json)
+        if (issues.isNotEmpty()) {
+            throw createInternal(
+                message = "Validation failed for TaskRequest: ${issues.joinToString("; ")}",
+                details = mapOf("validationIssues" to issues)
+            )
+        }
         return TaskRequest(
             authContextRef = json.optStringOrNull("authContextRef"),
             constraints = json.optJSONObject("constraints")?.let(::parseConstraints),
@@ -264,6 +290,12 @@ object IndeRunSerializer {
 
     private fun parseSpeechInput(json: JSONObject): SpeechInput {
         return SpeechInput(
+            controls = json.optJSONObject("controls")?.let { controls ->
+                SharedSynthesisControls(
+                    pitch = controls.optJSONObject("pitch")?.let(::parseRequestedNumber),
+                    speakingRate = controls.optJSONObject("speakingRate")?.let(::parseRequestedNumber)
+                )
+            },
             locale = json.getString("locale"),
             localeMatch = json.optStringOrNull("localeMatch")?.let(::parseLocaleMatch),
             text = json.getString("text"),
@@ -280,12 +312,33 @@ object IndeRunSerializer {
         )
     }
 
+    /**
+     * `playback` is read whatever the mode: on an artifact request it is invalid, and the engine's
+     * validation has to see it to refuse it. Dropping it here would run the artifact as if the
+     * caller had asked for nothing.
+     */
     private fun parseDelivery(json: JSONObject): OutputDeliveryRequest {
         return OutputDeliveryRequest(
             destinationRef = json.optStringOrNull("destinationRef"),
             mediaTypes = json.optJSONArray("mediaTypes")?.toStringList(),
-            mode = parseEnum(json.getString("mode"), "delivery mode", OutputDelivery::fromRawValue)
+            mode = parseEnum(json.getString("mode"), "delivery mode", OutputDelivery::fromRawValue),
+            playback = json.optJSONObject("playback")?.let { playback ->
+                PlaybackControls(
+                    volume = playback.optJSONObject("volume")?.let { volume ->
+                        RequestedUnitNumber(requirement = parseRequirement(volume), value = volume.getDouble("value"))
+                    }
+                )
+            }
         )
+    }
+
+    private fun parseRequestedNumber(json: JSONObject): RequestedNumber {
+        return RequestedNumber(requirement = parseRequirement(json), value = json.getDouble("value"))
+    }
+
+    /** Absent stays null: the engine reads it as 'preferred', the bridge does not fill it in. */
+    private fun parseRequirement(json: JSONObject): RequirementLevel? {
+        return json.optStringOrNull("requirement")?.let { parseEnum(it, "control requirement", RequirementLevel::fromRawValue) }
     }
 
     fun parsePrepareRequest(json: JSONObject): PrepareRequest {
@@ -394,6 +447,21 @@ object IndeRunSerializer {
                     }
                 )
             }
+            speech.controls?.let { controls ->
+                put("controls", JSArray().apply { controls.forEach { put(encodeSpeechControlOutcome(it)) } })
+            }
+        }
+    }
+
+    /** One record per control the request named; unknown values (`effective`, `method`, `reason`) stay absent. */
+    private fun encodeSpeechControlOutcome(outcome: SpeechControlOutcome): JSObject {
+        return JSObject().apply {
+            put("id", outcome.id.rawValue)
+            put("requested", outcome.requested)
+            outcome.effective?.let { put("effective", it) }
+            put("status", outcome.status.rawValue)
+            outcome.method?.let { put("method", it.rawValue) }
+            outcome.reason?.let { put("reason", it.rawValue) }
         }
     }
 
@@ -606,9 +674,22 @@ object IndeRunSerializer {
                         )
                         capability.locales?.let { locales -> put("locales", JSArray().apply { locales.forEach { put(it) } }) }
                         capability.privacy?.let { put("privacy", encodeProviderPrivacy(it)) }
+                        capability.controls?.let { controls ->
+                            put("controls", JSArray().apply { controls.forEach { put(encodeSpeechControlDeclaration(it)) } })
+                        }
                     }
                 )
             }
+        }
+    }
+
+    private fun encodeSpeechControlDeclaration(declaration: SpeechControlDeclaration): JSObject {
+        return JSObject().apply {
+            put("id", declaration.id.rawValue)
+            put("valueKind", declaration.valueKind.rawValue)
+            put("phase", declaration.phase.rawValue)
+            put("lifetime", declaration.lifetime.rawValue)
+            put("deliveries", JSArray().apply { declaration.deliveries.forEach { put(it.rawValue) } })
         }
     }
 
@@ -620,6 +701,7 @@ object IndeRunSerializer {
                         put("kind", task.kind)
                         task.available?.let { put("available", it) }
                         task.cancellationAvailable?.let { put("cancellationAvailable", it) }
+                        task.controlStates?.let { put("controlStates", encodeControlStates(it)) }
                         task.locales?.let { locales -> put("locales", JSArray().apply { locales.forEach { put(it) } }) }
                         task.readiness?.let { put("readiness", it.rawValue) }
                         task.reason?.let { put("reason", it) }
@@ -644,6 +726,38 @@ object IndeRunSerializer {
                         voice.name?.let { put("name", it) }
                         voice.networkRequired?.let { put("networkRequired", it) }
                         voice.readiness?.let { put("readiness", it.rawValue) }
+                        voice.controlStates?.let { put("controlStates", encodeControlStates(it)) }
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * Task and voice `controlStates`. `available` is written only when known: absent is the
+     * contract's "unknown" state, which is never support but is not `false` either, and a
+     * voice's absent field inherits the task's. A default here would turn unknown into a verdict.
+     */
+    private fun encodeControlStates(states: List<SpeechControlState>): JSArray {
+        return JSArray().apply {
+            states.forEach { state ->
+                put(
+                    JSObject().apply {
+                        put("id", state.id.rawValue)
+                        put("delivery", state.delivery.rawValue)
+                        state.available?.let { put("available", it) }
+                        state.reason?.let { put("reason", it) }
+                        state.range?.let { range ->
+                            put(
+                                "range",
+                                JSObject().apply {
+                                    put("min", range.min)
+                                    put("max", range.max)
+                                    range.default?.let { put("default", it) }
+                                    range.step?.let { put("step", it) }
+                                }
+                            )
+                        }
                     }
                 )
             }

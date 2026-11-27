@@ -16,12 +16,10 @@ import app.independo.inderun.contracts.SpeechOutputVoice
 import app.independo.inderun.contracts.TaskKind
 import app.independo.inderun.contracts.TaskOutput
 import app.independo.inderun.contracts.TaskOutputType
-import app.independo.inderun.contracts.TaskRequest
 import app.independo.inderun.contracts.TaskResult
 import app.independo.inderun.contracts.TaskResultTelemetry
 import app.independo.inderun.contracts.VoiceGender
 import app.independo.inderun.core.IndeRunException
-import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -38,8 +36,10 @@ class IndeRunSerializerSpeechTest {
 
     /**
      * The cross-SDK facade vectors (`contracts/fixtures/facade/speech.json` at inderun
-     * v0.5.0-rc.20): the `expected` request of each case is what `speak()` / `generateSpeech()`
-     * hand the bridge, so it must parse into the contract without losing a field.
+     * 99ce979, contract 1.1): the `expected` request of each case is what `speak()` /
+     * `generateSpeech()` hand the bridge, so it must parse into the contract without losing a
+     * field. They follow the facade split (ADR 025): `speak` carries `delivery.playback`,
+     * `generateSpeech` never does.
      */
     private fun speechVectors(): List<JSONObject> {
         val text = checkNotNull(javaClass.getResource("/fixtures/facade-speech.json")).readText()
@@ -47,78 +47,13 @@ class IndeRunSerializerSpeechTest {
         return List(cases.length()) { cases.getJSONObject(it) }
     }
 
-    /**
-     * Structural JSON equality. The unit tests compile against android.jar's `org.json`, which has
-     * no `similar`, so both sides become plain maps, lists and doubles first.
-     */
-    private fun plain(value: Any?): Any? = when (value) {
-        is JSONObject -> value.keys().asSequence().associateWith { plain(value.get(it)) }
-        is JSONArray -> List(value.length()) { plain(value.get(it)) }
-        is Number -> value.toDouble()
-        else -> value
-    }
-
-    private fun assertSameJson(message: String, expected: JSONObject, actual: JSONObject) {
-        assertEquals(message, plain(expected), plain(actual))
-    }
-
-    /** Test-side encoder: the request fields the vectors use, each only when set. */
-    private fun encode(request: TaskRequest): JSONObject = JSONObject().apply {
-        put("schemaVersion", request.schemaVersion.rawValue)
-        put("task", JSONObject().put("kind", request.task.kind.rawValue))
-        request.speech?.let { speech ->
-            put(
-                "speech",
-                JSONObject().apply {
-                    put("text", speech.text)
-                    put("locale", speech.locale)
-                    speech.localeMatch?.let { put("localeMatch", it.rawValue) }
-                    speech.voice?.let { voice ->
-                        put(
-                            "voice",
-                            JSONObject().apply {
-                                voice.providerId?.let { put("providerId", it) }
-                                voice.id?.let { put("id", it) }
-                                voice.gender?.let { put("gender", it.rawValue) }
-                                voice.requirement?.let { put("requirement", it.rawValue) }
-                            }
-                        )
-                    }
-                }
-            )
-        }
-        request.delivery?.let { delivery ->
-            put(
-                "delivery",
-                JSONObject().apply {
-                    put("mode", delivery.mode.rawValue)
-                    delivery.mediaTypes?.let { put("mediaTypes", JSONArray(it)) }
-                    delivery.destinationRef?.let { put("destinationRef", it) }
-                }
-            )
-        }
-        request.modelProfile?.let { put("modelProfile", it) }
-        request.authContextRef?.let { put("authContextRef", it) }
-        request.requestId?.let { put("requestId", it) }
-        request.constraints?.let { constraints ->
-            put(
-                "constraints",
-                JSONObject().apply {
-                    constraints.cloud?.let { put("cloud", it.rawValue) }
-                    constraints.privacy?.let { put("privacy", it.rawValue) }
-                    constraints.timeoutMs?.let { put("timeoutMs", it) }
-                }
-            )
-        }
-        request.preferences?.let { preferences ->
-            put("preferences", JSONObject().apply { preferences.optimizeFor?.let { put("optimizeFor", it.rawValue) } })
-        }
-    }
-
     @Test
     fun `every cross-SDK speech vector parses and round-trips without losing a field`() {
         val vectors = speechVectors()
         assertTrue(vectors.isNotEmpty())
+        // The 1.1 vectors that put controls on both calls and a volume on speak.
+        assertTrue(vectors.any { it.getJSONObject("expected").getJSONObject("delivery").has("playback") })
+        assertTrue(vectors.any { it.getString("call") == "generateSpeech" && it.getJSONObject("expected").getJSONObject("speech").has("controls") })
 
         for (vector in vectors) {
             val expected = vector.getJSONObject("expected")
@@ -127,7 +62,8 @@ class IndeRunSerializerSpeechTest {
             assertEquals(vector.getString("id"), TaskKind.TEXT_TO_SPEECH, request.task.kind)
             val mode = if (vector.getString("call") == "speak") OutputDelivery.Playback else OutputDelivery.Artifact
             assertEquals(vector.getString("id"), mode, request.delivery?.mode)
-            assertSameJson(vector.getString("id"), expected, encode(request))
+            assertSameJson(vector.getString("id"), expected, encodeRequestForTest(request))
+            if (mode == OutputDelivery.Artifact) assertNull(vector.getString("id"), request.delivery?.playback)
         }
     }
 

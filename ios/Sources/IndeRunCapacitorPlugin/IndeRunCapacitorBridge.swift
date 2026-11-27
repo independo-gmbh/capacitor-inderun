@@ -244,9 +244,9 @@ final class IndeRunCapacitorBridge {
 
     func run(requestObject: JSObject) async throws -> JSObject {
         let engine = try requireEngine(before: "run(request)")
-        let request = try decodeRequest(from: requestObject)
+        let request = try Self.decodeTaskRequest(requestObject)
         let result = try await engine.run(request: request)
-        return try encode(result)
+        return try encode(result: result)
     }
 
     func checkCapabilities() async throws -> JSObject {
@@ -533,8 +533,12 @@ final class IndeRunCapacitorBridge {
         return try JSONDecoder().decode(CapacitorRunOptions.self, from: data)
     }
 
+    /// The envelope's `request` gets the same raw check as `run`'s, on the parsed JSON, before the
+    /// envelope is decoded; see `decodeTaskRequest(_:)`.
     private func decodeStartStreamOptions(from object: JSObject) throws -> CapacitorStartStreamOptions {
         let data = try JSONSerialization.data(withJSONObject: object, options: [])
+        let envelope = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        try Self.refuseUndecodableTaskRequest(envelope?["request"] ?? NSNull())
         return try JSONDecoder().decode(CapacitorStartStreamOptions.self, from: data)
     }
 
@@ -552,12 +556,34 @@ final class IndeRunCapacitorBridge {
         return try JSONDecoder().decode(CapacitorCancelStreamOptions.self, from: data)
     }
 
-    private func decodeRequest(from object: JSObject) throws -> TaskRequest {
+    /// A `TaskRequest` from JS, as the contract type the engine takes.
+    ///
+    /// The raw check comes first: the generated `Codable` types drop keys they do not model, so a
+    /// field the Swift contract cannot express (an unknown or misspelled speech control, a requested
+    /// number with an extra key, another schema version) would otherwise vanish here and never reach
+    /// validation. Everything the check does not cover decodes faithfully and is left to the
+    /// engine's request validation, a playback control on an artifact request included: it is
+    /// decoded, never dropped, so the engine refuses it.
+    static func decodeTaskRequest(_ object: JSObject) throws -> TaskRequest {
         let data = try JSONSerialization.data(withJSONObject: object, options: [])
+        try refuseUndecodableTaskRequest(JSONSerialization.jsonObject(with: data, options: []))
         return try JSONDecoder().decode(TaskRequest.self, from: data)
     }
 
-    private func encode(_ result: TaskResult) throws -> JSObject {
+    /// Runs the core's `RawTaskRequestValidation` (ADR 025) on a request as parsed JSON and refuses
+    /// it on any issue with the normalized validation error the engine uses: `Internal`,
+    /// "Validation failed for TaskRequest: ...", and the issues under `details.validationIssues` --
+    /// an array of the core's messages, as the Android bridge sends them.
+    static func refuseUndecodableTaskRequest(_ json: Any) throws {
+        let issues = RawTaskRequestValidation.issues(json)
+        guard !issues.isEmpty else { return }
+        throw createInternal(
+            message: "Validation failed for TaskRequest: " + issues.joined(separator: "; "),
+            details: ["validationIssues": JSONAny(issues)]
+        )
+    }
+
+    func encode(result: TaskResult) throws -> JSObject {
         try encodeObject(result)
     }
 

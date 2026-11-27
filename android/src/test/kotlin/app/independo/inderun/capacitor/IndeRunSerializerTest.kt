@@ -11,6 +11,7 @@ import app.independo.inderun.contracts.TaskRequest
 import app.independo.inderun.contracts.TaskRequestTask
 import app.independo.inderun.contracts.TaskResult
 import app.independo.inderun.contracts.TaskResultTelemetry
+import app.independo.inderun.core.IndeRunException
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -71,14 +72,17 @@ class IndeRunSerializerTest {
 
     // --- Unknown enum values throw ---
 
-    @Test(expected = IllegalArgumentException::class)
+    // An unsupported schemaVersion is the raw check's to refuse, with the normalized validation
+    // error; see IndeRunSerializerSpeechControlsTest.
+
+    @Test(expected = IndeRunException::class)
     fun `parseTaskRequest throws on unknown schemaVersion`() {
         IndeRunSerializer.parseTaskRequest(
             JSONObject("""{"schemaVersion":"9.9","task":{"kind":"text_to_text"},"prompt":"Hello"}""")
         )
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    @Test(expected = IndeRunException::class)
     fun `parseTaskRequest throws on the retired schemaVersion 1_0`() {
         IndeRunSerializer.parseTaskRequest(
             JSONObject("""{"schemaVersion":"1.0","task":{"kind":"text_to_text"},"prompt":"Hello"}""")
